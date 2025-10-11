@@ -71,5 +71,11 @@ __cache__/
 # --- Virtualization / containers ---
 *.env
 .env*
+.venv/
 *.devcontainer/
 docker-data/
+help/
+
+# Large binary resources (keep samples in assets/samples/)
+assets/collision_meshes/**
+!assets/collision_meshes/README.md
