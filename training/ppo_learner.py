@@ -8,6 +8,7 @@
 import numpy as np
 from rlgym_sim.utils.gamestates import GameState
 from rlgym_ppo.util import MetricsLogger
+from pathlib import Path
 import os
 from rlgym_sim.utils.reward_functions.common_rewards import *
 from rlgym_ppo import Learner
@@ -354,38 +355,11 @@ if __name__ == "__main__":
     # educated guess - could be slightly higher or lower
     min_inference_size = max(1, int(round(n_proc * 0.9)))
 
-    #directory = r"data\checkpoints\rlgym-ppo-run"
-    #if not os.path.exists(directory):
-    #    os.makedirs(directory)
-
-    
-    #checkpoint_dirs = os.listdir(directory)
-    # if not os.path.exists(checkpoint_file):
-    #     raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_file}")
-    #latest_checkpoint_dir = directory + "\\" + str(max(checkpoint_dirs, key=lambda d: int(d)))
-
-    # Note: You MUST disable the "add_unix_timestamp" learner setting for this to work properly
-    # latest_checkpoint_dir = "data\checkpoints\rlgym-ppo-run\\" + str(max(os.listdir(directory), key=lambda d: int(d)))
-
-    # def get_latest_directory(directory):
-    #     list_of_dirs = [d for d in os.scandir(directory) if d.is_dir()]
-    #     if not list_of_dirs:
-    #         return None
-    #     latest_dir = max(list_of_dirs, key=lambda d: d.stat().st_mtime).path
-    #     return latest_dir
-
-    # # Example Usage
-    # directory_path = "C:/Users/nhafe/AppData/Local/RLBotGUIX/MyBots/RlGymBot/data/checkpoints"
-    # latest_directory = get_latest_directory(directory_path)
-    # print(f"Latest directory: {latest_directory}")
-
-    # Example Usage
-    base_directory = "C:/Users/nhafe/AppData/Local/RLBotGUIX/MyBots/RlGymBot/data/checkpoints"  # Replace with your main directory
-    latest_checkpoint_dir = get_latest_checkpoint(base_directory)
-
+    # Configurable checkpoint root via env var, portable. Used for loading latest training checkpoint.
+    DEFAULT_CKPT_ROOT = Path("training/checkpoints")  # repo-relative
+    CKPT_ROOT = Path(os.environ.get("RLGYM_PPO_CKPT_ROOT", DEFAULT_CKPT_ROOT))
+    latest_checkpoint_dir = get_latest_checkpoint(CKPT_ROOT)
     print(f"Latest checkpoint directory: {latest_checkpoint_dir}")
-
-    
 
     # learner = Learner(build_rocketsim_env,
     #                   n_proc=n_proc,
