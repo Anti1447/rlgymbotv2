@@ -1,0 +1,28 @@
+# Example training config (adapt to your learner)
+algorithm: ppo
+seed: 42
+
+total_timesteps: 500000
+n_envs: 1
+
+save_every_steps: 50000
+checkpoint_dir: training/checkpoints
+
+env:
+  map: DFHStadium
+  frame_skip: 8
+  team_size: 1
+  state_setter: default
+  reward:
+    name: strong_hit_sqrt
+    params:
+      scale: 1.0
+obs:
+  normalize: true
+  clip_obs: 10.0
+
+policy:
+  # Example placeholders for an MLP policy
+  hidden_sizes: [256, 256]
+  activation: relu
+  action_space: continuous

@@ -1,0 +1,5 @@
+n_eval_episodes: 25
+opponent: basic_bot
+record_replays: false
+artifacts_root: artifacts
+use_latest: true
