@@ -1,0 +1,1 @@
+This is a copy & paste from all the rlgym_sim utils from my first project. Here they can be revisioned and tracked more easily and I don't lose my progress.
