@@ -6,7 +6,7 @@
 # Author: NJH
 ################################
 from __future__ import annotations
-from rlgym_sim.utils.action_parsers import DiscreteAction
+from .discrete_action import DiscreteAction
 from rlbot.agents.base_agent import BaseAgent, SimpleControllerState
 from rlbot.utils.structures.game_data_struct import GameTickPacket
 import numpy as np

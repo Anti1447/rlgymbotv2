@@ -6,3 +6,6 @@ rlbottraining
 
 # This will cause pip to auto-upgrade and stop scaring people with warning messages
 pip
+
+# remove noise from cmd logging
+pydantic==1.10.15
