@@ -5,3 +5,5 @@ Description: Initial Release
 Title: Changelog
 Author: NJH
 --------------------------------------
+**commit/Docs** * Add initial repository structure
+**commit/Docs** * Update gitignore & license for project, add roadmap details
