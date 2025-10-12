@@ -1,73 +1,109 @@
 import numpy as np
 
-from rlgym_sim.utils import RewardFunction, math
-from rlgym_sim.utils.common_values import BALL_RADIUS, CAR_MAX_SPEED
-from rlgym_sim.utils.gamestates import GameState, PlayerData
-from rlgym_sim.utils.common_values import CEILING_Z, BLUE_TEAM, ORANGE_GOAL_BACK, BLUE_GOAL_BACK
+from mysim import RewardFunction, math
+from mysim.common_values import BALL_RADIUS, CAR_MAX_SPEED
+from mysim.gamestates import GameState, PlayerData
+from mysim.common_values import CEILING_Z, BLUE_TEAM, ORANGE_GOAL_BACK, BLUE_GOAL_BACK
 
 class AirTouchReward(RewardFunction):
-    MAX_TIME_IN_AIR = 3  # A rough estimate of the maximum reasonable aerial time
-
+    """
+    Reward an aerial touch: if the player touches the ball while airborne,
+    scale by ball height (higher touches worth more).
+    """
     def reset(self, initial_state: GameState):
         pass
 
     def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
-        if player.ball_touched:
-            air_time_frac = min(player.air_time_since_jump, self.MAX_TIME_IN_AIR) / self.MAX_TIME_IN_AIR
-            height_frac = state.ball.position[2] / CEILING_Z
-            return min(air_time_frac, height_frac)
-        return 0
-    
+        if not player.ball_touched:
+            return 0.0
+        # Consider it an "air" touch if player isn't on ground at the moment of touch
+        is_air = not player.on_ground
+        if not is_air:
+            return 0.0
+        height_frac = float(np.clip(state.ball.position[2] / CEILING_Z, 0.0, 1.0))
+        return height_frac
+
 class BasicAerialReward(RewardFunction):
-    MAX_TIME_IN_AIR = 3  # A rough estimate of the maximum reasonable aerial time
-    def __init__(self, max_reward=1.0):
+    """
+    Encourage simple aerial behaviors near the ball:
+      - being airborne (proxy air-time),
+      - nose pitched up,
+      - boosting while moving upward,
+      - velocity aligned toward the ball.
+    Uses internal per-player trackers; no custom PlayerData fields required.
+    """
+    def __init__(self, max_reward: float = 1.0, max_air_steps: int = 90):
         """
-        Rewards the bot for performing basic aerial mechanics.
-        :param max_reward: Maximum reward for successful aerial behavior.
+        :param max_reward: cap for total reward from this function
+        :param max_air_steps: steps to consider "full" airborne time (≈6s if 15Hz)
         """
-        super().__init__()
-        self.max_reward = max_reward
-        self.max_air_time = 1.75  # Maximum reasonable aerial time
-        
+        self.max_reward = float(max_reward)
+        self.max_air_steps = int(max_air_steps)
+        self._air_steps = {}        # car_id -> int
+        self._last_boost = {}       # car_id -> float
 
     def reset(self, initial_state: GameState):
-        pass
+        self._air_steps.clear()
+        self._last_boost.clear()
+
+    def _is_boosting(self, player: PlayerData) -> bool:
+        cid = player.car_id
+        prev = self._last_boost.get(cid, player.boost_amount)
+        # decreasing boost amount => using boost (simple, robust heuristic)
+        boosting = player.boost_amount < prev
+        self._last_boost[cid] = player.boost_amount
+        return boosting
+
+    def _air_step_frac(self, player: PlayerData) -> float:
+        cid = player.car_id
+        steps = self._air_steps.get(cid, 0)
+        if player.on_ground:
+            steps = 0
+        else:
+            steps += 1
+        self._air_steps[cid] = steps
+        return min(1.0, steps / max(1, self.max_air_steps))
 
     def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
-        reward = 0.0
-
-        # Check if the bot is within 500 units of the ball
-        distance_to_ball = np.linalg.norm(player.car_data.position - state.ball.position)
-        if distance_to_ball > 500:
+        # Only evaluate when close to the ball (avoid rewarding random aerials far away)
+        dist = float(np.linalg.norm(player.car_data.position - state.ball.position))
+        if dist > 500.0:
+            # still advance trackers so state is consistent next tick
+            _ = self._is_boosting(player)
+            _ = self._air_step_frac(player)
             return 0.0
 
-        # Reward for being in the air after jumping
-        if player.air_time_since_jump > 0 and not player.on_ground:
-            air_time_frac = min(player.air_time_since_jump, self.max_air_time) / self.max_air_time
-            reward += 0.2 * air_time_frac * self.max_reward
+        reward = 0.0
 
-        # Reward for tilting the nose upward
-        forward_vector = player.car_data.forward()
-        upward_vector = np.array([0, 0, 1])
-        nose_up_alignment = np.dot(forward_vector, upward_vector)
-        if nose_up_alignment > 0.5:  # Nose is tilted upward
+        # Airborne component
+        air_frac = self._air_step_frac(player)
+        reward += 0.2 * air_frac * self.max_reward
+
+        # Nose up (encourage upward pitch)
+        forward = player.car_data.forward()               # unit vector
+        upward = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+        nose_up_alignment = float(np.dot(forward, upward))  # [-1, 1]
+        if nose_up_alignment > 0.5:
             reward += 0.2 * self.max_reward
 
-        # Reward for boosting while moving upward
-        if player.is_boosting and player.car_data.linear_velocity[2] > 0:
+        # Boosting while moving upward
+        lv = player.car_data.linear_velocity
+        moving_up = lv[2] > 0.0
+        if self._is_boosting(player) and moving_up:
             reward += 0.3 * self.max_reward
 
-        # Reward for moving toward the ball's intercept point
-        ball_position = state.ball.position
-        car_position = player.car_data.position
-        direction_to_ball = ball_position - car_position
-        direction_to_ball /= np.linalg.norm(direction_to_ball)  # Normalize
-        car_velocity = player.car_data.linear_velocity
-        alignment = np.dot(car_velocity / np.linalg.norm(car_velocity), direction_to_ball)
-        if alignment > 0.8:  # Moving toward the ball
-            reward += 0.3 * self.max_reward
+        # Velocity aligned toward the ball
+        dir_to_ball = state.ball.position - player.car_data.position
+        norm_v = np.linalg.norm(lv)
+        norm_d = np.linalg.norm(dir_to_ball)
+        if norm_v > 1e-6 and norm_d > 1e-6:
+            direction_to_ball = dir_to_ball / norm_d
+            alignment = float(np.dot(lv / norm_v, direction_to_ball))  # [-1, 1]
+            if alignment > 0.8:
+                reward += 0.3 * self.max_reward
 
-        return reward
+        # Clamp to max_reward
+        return float(min(self.max_reward, max(0.0, reward)))
     
 class BasicWallHitReward(RewardFunction):
     def __init__(self, max_reward=1.0):
@@ -194,16 +230,57 @@ class FaceBallReward(RewardFunction):
         return float(np.dot(player.car_data.forward(), norm_pos_diff))
 
 class JumpShotReward(RewardFunction):
-    MAX_JUMP_TIME = 6.0  # Maximum time since last jump to consider for the reward
+    """
+    Reward when the player touches the ball shortly after a jump and while airborne.
+    Tracks 'recent jump' per player internally; no custom PlayerData fields required.
+
+    Assumes DiscreteAction layout: [throttle, steer, pitch, yaw, roll, jump, boost, handbrake]
+    so the jump button is index 5 in previous_action.
+    """
+    def __init__(self, max_steps_since_jump: int = 90, jump_button_index: int = 5):
+        """
+        :param max_steps_since_jump: how many env steps after a jump still count as 'recent'
+                                     (~90 steps ≈ ~6s if your step rate is ~15 Hz)
+        :param jump_button_index: index of the jump button in the action array
+        """
+        self.max_steps = int(max_steps_since_jump)
+        self.jump_idx = int(jump_button_index)
+        self._since_jump = {}  # car_id -> steps since last jump (airborne)
 
     def reset(self, initial_state: GameState):
-        pass
+        self._since_jump.clear()
+
+    def _update_since_jump(self, player: PlayerData, previous_action) -> int:
+        cid = player.car_id
+        steps = self._since_jump.get(cid, self.max_steps + 1)
+
+        # Grounded resets the counter (we only care about airborne jump windows)
+        if player.on_ground:
+            steps = self.max_steps + 1
+        else:
+            # Detect a jump press in the last action
+            jumped = False
+            if previous_action is not None:
+                try:
+                    val = previous_action[self.jump_idx]
+                    jumped = bool(val >= 1 or val > 0.5)  # works for discrete/binary
+                except Exception:
+                    jumped = False
+
+            steps = 0 if jumped else min(self.max_steps + 1, steps + 1)
+
+        self._since_jump[cid] = steps
+        return steps
 
     def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
-        if player.ball_touched and player.on_ground == False and player.air_time_since_jump < self.MAX_JUMP_TIME:
-            height_frac = player.car_data.position[2] / CEILING_Z
+        steps = self._update_since_jump(player, previous_action)
+
+        if player.ball_touched and (not player.on_ground) and steps <= self.max_steps:
+            # Scale by height to prefer higher jump touches
+            height_frac = float(np.clip(player.car_data.position[2] / CEILING_Z, 0.0, 1.0))
             return height_frac
-        return 0
+
+        return 0.0
     
 class LiuDistancePlayerToBallReward(RewardFunction):
     def reset(self, initial_state: GameState):
@@ -291,7 +368,7 @@ class PossessionReward(RewardFunction):
         return 0.0
     
 # Import CAR_MAX_SPEED from common game values
-from rlgym_sim.utils.common_values import CAR_MAX_SPEED
+from mysim.common_values import CAR_MAX_SPEED
 
 class SpeedTowardBallReward(RewardFunction):
     # Default constructor
@@ -374,7 +451,7 @@ class TouchBallReward(RewardFunction):
         return 0
     
 class VelocityPlayerToBallReward(RewardFunction):
-    def __init__(self, use_scalar_projection=False):
+    def __init__(self, use_scalar_projection: bool = False):
         super().__init__()
         self.use_scalar_projection = use_scalar_projection
 
@@ -382,19 +459,22 @@ class VelocityPlayerToBallReward(RewardFunction):
         pass
 
     def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
-        vel = player.car_data.linear_velocity
-        pos_diff = state.ball.position - player.car_data.position
-        if pos_diff > 6000:
-            return 0.0
-        if self.use_scalar_projection:
-            # Vector version of v=d/t <=> t=d/v <=> 1/t=v/d
-            # Max value should be max_speed / ball_radius = 2300 / 92.75 = 24.8
-            # Used to guide the agent towards the ball
-            inv_t = math.scalar_projection(vel, pos_diff)
-            return inv_t
-        else:
-            # Regular component velocity
-            norm_pos_diff = pos_diff / np.linalg.norm(pos_diff)
-            norm_vel = vel / CAR_MAX_SPEED
-            return float(np.dot(norm_pos_diff, norm_vel))
+        vel = player.car_data.linear_velocity           # (3,)
+        pos_diff = state.ball.position - player.car_data.position  # (3,)
 
+        # Distance to ball
+        dist = float(np.linalg.norm(pos_diff))
+        if dist > 6000.0:           # far away → negligible shaping (your choice)
+            return 0.0
+        if dist < 1e-6:             # avoid divide-by-zero
+            return 0.0
+
+        if self.use_scalar_projection:
+            # scalar projection of velocity onto the ball direction: |v| * cos(theta)
+            # equivalently dot(vel, pos_diff_hat)
+            dir_to_ball = pos_diff / dist
+            return float(np.dot(vel, dir_to_ball)) / CAR_MAX_SPEED
+        else:
+            # component velocity toward ball, normalized by car max speed
+            dir_to_ball = pos_diff / dist
+            return float(np.dot(dir_to_ball, vel)) / CAR_MAX_SPEED
