@@ -6,11 +6,11 @@
 # Author: NJH
 ################################
 import numpy as np
-from rlgym_sim.utils.gamestates import GameState
+from mysim.gamestates import GameState
 from rlgym_ppo.util import MetricsLogger
 from pathlib import Path
 import os
-from rlgym_sim.utils.reward_functions.common_rewards import *
+from mysim.reward_functions.common_rewards import *
 from rlgym_ppo import Learner
 
 class ExampleLogger(MetricsLogger):
@@ -51,20 +51,59 @@ def get_latest_checkpoint(run_directory):
 
 def build_rocketsim_env():
     import rlgym_sim
-    from rlgym_sim.utils.reward_functions import CombinedReward
-    from rlgym_sim.utils.reward_functions.common_rewards import SpeedTowardBallReward, \
-        EventReward, FaceBallReward, InAirReward, VelocityBallToGoalReward, StrongHitReward, \
-        VelocityReward, SaveBoostReward, AlignBallGoal, BoostPickupReward, RewardIfBehindBall, \
-        SaveReward, JumpShotReward, PossessionReward, LiuDistanceBallToGoalReward, LiuDistancePlayerToBallReward, \
-        PunishIfInNet, StealBoostReward
-    from rlgym_sim.utils.obs_builders import DefaultObs
-    # from rlgym.rocket_league.done_conditions import GoalCondition, AnyCondition
-    from rlgym_sim.utils.terminal_conditions.common_conditions import TimeoutCondition, NoTouchTimeoutCondition, GoalScoredCondition
-    from rlgym_sim.utils.reward_functions.common_rewards.conditional_rewards import GoalIfTouchedLastConditionalReward
-    from rlgym_sim.utils import common_values
-    from rlgym_sim.utils.state_setters import RandomState
-    #from rlgym.rocket_league.action_parsers import LookupTableAction, RepeatAction
-    from rlgym_sim.utils.action_parsers import DiscreteAction
+    from mysim.reward_functions import CombinedReward
+
+    # from rlgym_sim.utils.reward_functions import CombinedReward
+    from mysim.reward_functions.common_rewards import (
+        VelocityPlayerToBallReward,
+        VelocityBallToGoalReward,
+        EventReward,
+        FaceBallReward,
+        InAirReward,
+        StrongHitReward,
+        SaveBoostReward,
+        AlignBallGoal,
+        BoostPickupReward,
+        RewardIfBehindBall,
+        BasicShotReward,
+        SaveReward,
+        JumpShotReward,
+        PossessionReward,
+        LiuDistanceBallToGoalReward,
+        LiuDistancePlayerToBallReward,
+        PunishIfInNet,
+        StealBoostReward
+    )
+    # from rlgym_sim.utils.reward_functions.common_rewards import SpeedTowardBallReward, \
+    #     EventReward, FaceBallReward, InAirReward, VelocityBallToGoalReward, StrongHitReward, \
+    #     VelocityReward, SaveBoostReward, AlignBallGoal, BoostPickupReward, RewardIfBehindBall, \
+    #     SaveReward, JumpShotReward, PossessionReward, LiuDistanceBallToGoalReward, LiuDistancePlayerToBallReward, \
+    #     PunishIfInNet, StealBoostReward
+    # from rlgym_sim.utils.reward_functions.common_rewards import (
+    #     VelocityPlayerToBallReward,
+    #     VelocityBallToGoalReward,
+    #     EventReward,
+    #     FaceBallReward,
+    #     InAirReward,
+    #     StrongHitReward,
+    #     SaveBoostReward,
+    #     AlignBallGoal,
+    #     BoostPickupReward,
+    #     RewardIfBehindBall,
+    #     SaveReward,
+    #     JumpShotReward,
+    #     PossessionReward,
+    #     LiuDistanceBallToGoalReward,
+    #     LiuDistancePlayerToBallReward,
+    #     PunishIfInNet,
+    #     StealBoostReward
+    # )
+    from mysim.obs_builders import DefaultObs
+    from mysim.terminal_conditions.common_conditions import TimeoutCondition, NoTouchTimeoutCondition, GoalScoredCondition
+    from mysim.reward_functions.common_rewards.conditional_rewards import GoalIfTouchedLastConditionalReward
+    from mysim import common_values
+    from mysim.state_setters import RandomState
+    from mysim.action_parsers import DiscreteAction
 
     spawn_opponents = True
     game_tick_rate = 120
@@ -88,7 +127,7 @@ def build_rocketsim_env():
 
     # INITIAL REWARD FUNCTION. 3/1/25. GET BOT TO TOUCH THE BALL CONSISTENTLY
     reward_fn = CombinedReward.from_zipped(
-                                            (EventReward(team_goal=1, concede=-1), 50.0), # Big reward for scoring goal
+                                            #(EventReward(team_goal=1, concede=-1), 50.0), # Big reward for scoring goal
                                             (SaveReward(), 5.0), # Big reward for saving ball from going in net
                                             (PossessionReward(max_reward=1.0), 1.0), # Reward for having possession of the ball
                                             (BasicShotReward(), 5.0),
@@ -100,7 +139,7 @@ def build_rocketsim_env():
                                             (LiuDistanceBallToGoalReward(), 2.0),
                                             (AlignBallGoal(), 1.0),
                                             (LiuDistancePlayerToBallReward(), 0.5),
-                                            (SpeedTowardBallReward(), 0.75), # Move towards the ball!
+                                            (VelocityPlayerToBallReward(), 0.75), # Move towards the ball!
                                             (BoostPickupReward(big_pad_reward=1.0, small_pad_reward=0.5), 0.75),
                                             (SaveBoostReward(), 0.25),
                                             (StealBoostReward(), 1.5),
@@ -350,7 +389,7 @@ if __name__ == "__main__":
 
     # 64 processes for training
     # 4 for debug
-    n_proc = 64
+    n_proc = 16
 
     # educated guess - could be slightly higher or lower
     min_inference_size = max(1, int(round(n_proc * 0.9)))
@@ -386,7 +425,7 @@ if __name__ == "__main__":
     #                   render_delay=0.02)
     # learner.learn()
 
-    learner = Learner(build_rocketsim_env_training,
+    learner = Learner(build_rocketsim_env,
                       n_proc=n_proc,
                       min_inference_size=min_inference_size,
                       metrics_logger=metrics_logger, # Leave this empty for now.
