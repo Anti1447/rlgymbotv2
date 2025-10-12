@@ -14,6 +14,7 @@ import numpy as np
 from pathlib import Path
 from .policy_loader import load_latest_artifact
 
+print("[PPOHivemind] Agent successfully loaded in RLBotGUI.")
 
 class PPOHivemindAgent(BaseAgent):
     def initialize_agent(self):
