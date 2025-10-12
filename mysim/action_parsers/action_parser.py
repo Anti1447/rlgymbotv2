@@ -3,7 +3,7 @@ The action parser.
 """
 
 from abc import ABC, abstractmethod
-from rlgym_sim.utils.gamestates import PlayerData, GameState
+from mysim.gamestates import PlayerData, GameState
 import gym.spaces
 import numpy as np
 from typing import List, Union, Tuple, Dict, Any

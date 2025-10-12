@@ -3,7 +3,7 @@ The reward function.
 """
 
 from abc import ABC, abstractmethod
-from rlgym_sim.utils.gamestates import GameState, PlayerData
+from mysim.gamestates import GameState, PlayerData
 import numpy as np
 
 

@@ -1,10 +1,10 @@
 import numpy as np
 
-from rlgym_sim.utils import math
-from rlgym_sim.utils.common_values import BLUE_TEAM, BLUE_GOAL_BACK, ORANGE_GOAL_BACK, ORANGE_TEAM, BALL_MAX_SPEED, \
+from mysim import math
+from mysim.common_values import BLUE_TEAM, BLUE_GOAL_BACK, ORANGE_GOAL_BACK, ORANGE_TEAM, BALL_MAX_SPEED, \
     CAR_MAX_SPEED, CEILING_Z
-from rlgym_sim.utils.gamestates import GameState, PlayerData
-from rlgym_sim.utils.reward_functions import RewardFunction
+from mysim.gamestates import GameState, PlayerData
+from mysim.reward_functions import RewardFunction
 
 
 

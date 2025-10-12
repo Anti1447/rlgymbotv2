@@ -1,9 +1,9 @@
 import math
 import numpy as np
 import gym.spaces
-from rlgym_sim.utils import common_values
-from rlgym_sim.utils.gamestates import GameState
-from rlgym_sim.utils.action_parsers import ActionParser
+from mysim import common_values
+from mysim.gamestates import GameState
+from mysim.action_parsers import ActionParser
 
 
 class ContinuousAction(ActionParser):

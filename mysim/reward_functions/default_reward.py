@@ -1,6 +1,6 @@
-from rlgym_sim.utils.reward_functions import RewardFunction
-from rlgym_sim.utils import math
-from rlgym_sim.utils.gamestates import GameState, PlayerData
+from mysim.reward_functions import RewardFunction
+from mysim import math
+from mysim.gamestates import GameState, PlayerData
 import numpy as np
 
 

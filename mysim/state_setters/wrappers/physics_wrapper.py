@@ -1,4 +1,4 @@
-from rlgym_sim.utils.gamestates import PhysicsObject
+from mysim.gamestates import PhysicsObject
 import numpy as np
 
 

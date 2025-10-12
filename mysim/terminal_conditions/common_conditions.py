@@ -2,9 +2,9 @@
 A module containing implementations of common terminal conditions.
 """
 
-from rlgym_sim.utils.terminal_conditions import TerminalCondition
-from rlgym_sim.utils.gamestates import GameState
-from rlgym_sim.utils.common_values import BACK_WALL_Y, GOAL_HEIGHT, BALL_RADIUS
+from mysim.terminal_conditions import TerminalCondition
+from mysim.gamestates import GameState
+from mysim.common_values import BACK_WALL_Y, GOAL_HEIGHT, BALL_RADIUS
 
 
 class TimeoutCondition(TerminalCondition):

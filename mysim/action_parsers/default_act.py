@@ -1,7 +1,7 @@
 import numpy as np
 import gym.spaces
-from rlgym_sim.utils.gamestates import GameState
-from rlgym_sim.utils.action_parsers import ContinuousAction
+from mysim.gamestates import GameState
+from mysim.action_parsers import ContinuousAction
 from typing import Union, List
 
 

@@ -1,5 +1,5 @@
 from collections import deque
-from rlgym_sim.utils.gamestates import GameState
+from mysim.gamestates import GameState
 
 class CurriculumManager:
     def __init__(self, difficulty_levels=5):

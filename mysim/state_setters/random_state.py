@@ -1,6 +1,6 @@
-from rlgym_sim.utils.state_setters import StateSetter
-from rlgym_sim.utils.state_setters import StateWrapper
-from rlgym_sim.utils.math import rand_vec3
+from mysim.state_setters import StateSetter
+from mysim.state_setters import StateWrapper
+from mysim.math import rand_vec3
 import numpy as np
 from numpy import random as rand
 

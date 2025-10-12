@@ -2,7 +2,7 @@
 A class containing all data about a player in the game.
 """
 
-from rlgym_sim.utils.gamestates import PhysicsObject
+from mysim.gamestates import PhysicsObject
 
 
 class PlayerData(object):

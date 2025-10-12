@@ -1,9 +1,9 @@
 import numpy as np
 
-from rlgym_sim.utils import RewardFunction, math
-from rlgym_sim.utils.common_values import BLUE_TEAM, ORANGE_TEAM, ORANGE_GOAL_BACK, \
+from mysim import RewardFunction, math
+from mysim.common_values import BLUE_TEAM, ORANGE_TEAM, ORANGE_GOAL_BACK, \
     BLUE_GOAL_BACK, BALL_MAX_SPEED, BACK_WALL_Y, BALL_RADIUS, BACK_NET_Y
-from rlgym_sim.utils.gamestates import GameState, PlayerData
+from mysim.gamestates import GameState, PlayerData
 
 
 class LiuDistanceBallToGoalReward(RewardFunction):

@@ -2,7 +2,7 @@ from typing import Any, Dict
 import numpy as np
 from rlgym.rocket_league.action_parsers import LookupTableAction
 import gym.spaces
-from rlgym_sim.utils.gamestates import PlayerData, GameState
+from mysim.gamestates import PlayerData, GameState
 from rlgym.api import ActionParser, AgentID
 
 

@@ -1,5 +1,5 @@
-from rlgym_sim.utils.state_setters import StateSetter
-from rlgym_sim.utils.state_setters import StateWrapper
+from mysim.state_setters import StateSetter
+from mysim.state_setters import StateWrapper
 import random
 import numpy as np
 

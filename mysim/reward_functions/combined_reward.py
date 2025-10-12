@@ -1,8 +1,8 @@
 from typing import Any, Optional, Tuple, overload, Union
 
 import numpy as np
-from rlgym_sim.utils.reward_functions import RewardFunction
-from rlgym_sim.utils.gamestates import GameState, PlayerData
+from mysim.reward_functions import RewardFunction
+from mysim.gamestates import GameState, PlayerData
 
 
 class CombinedReward(RewardFunction):
@@ -46,11 +46,12 @@ class CombinedReward(RewardFunction):
         weights = []
         for value in rewards_and_weights:
             if isinstance(value, tuple):
+                if len(value) != 2:
+                    raise ValueError(f"Expected (reward, weight) tuple, got {value!r}")
                 r, w = value
             else:
-                r, w = value, 1.
-            rewards.append(r)
-            weights.append(w)
+                r, w = value, 1.0
+            rewards.append(r); weights.append(w)
         return cls(tuple(rewards), tuple(weights))
 
     def reset(self, initial_state: GameState) -> None:

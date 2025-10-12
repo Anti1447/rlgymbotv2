@@ -1,6 +1,6 @@
 import numpy as np
-from rlgym_sim.utils import RewardFunction
-from rlgym_sim.utils.gamestates import GameState, PlayerData
+from mysim import RewardFunction
+from mysim.gamestates import GameState, PlayerData
 
 '''
 This is a wrapper to put around an existing reward
