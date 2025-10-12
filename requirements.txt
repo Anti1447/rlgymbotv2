@@ -11,3 +11,12 @@ pip
 
 # remove noise from cmd logging
 pydantic==1.10.15
+
+# Dependencies from RocketSimVis
+moderngl
+moderngl-window
+PyOpenGL
+pyrr
+numpy
+pywavefront
+pyqt5
