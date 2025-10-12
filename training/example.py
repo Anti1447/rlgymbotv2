@@ -2,6 +2,10 @@ import numpy as np
 from rlgym_sim.utils.gamestates import GameState
 from rlgym_ppo.util import MetricsLogger
 
+#Mute warnings at runtime
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+
 
 class ExampleLogger(MetricsLogger):
     def _collect_metrics(self, game_state: GameState) -> list:
