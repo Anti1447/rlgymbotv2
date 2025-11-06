@@ -2,7 +2,7 @@ import numpy as np
 import gym.spaces
 from mysim.gamestates import GameState
 from mysim.action_parsers import ContinuousAction
-from typing import Union, List
+from typing import Union, List, Optional, Dict, Any
 
 
 class DefaultAction(ContinuousAction):
@@ -17,7 +17,7 @@ class DefaultAction(ContinuousAction):
     def get_action_space(self) -> gym.spaces.Space:
         return super().get_action_space()
 
-    def parse_actions(self, actions: Union[np.ndarray, List[np.ndarray], List[float]], state: GameState) -> np.ndarray:
+    def parse_actions(self, actions: Union[np.ndarray, List[np.ndarray], List[float]], state: GameState, shared_info: Optional[Dict[str, Any]] = None) -> np.ndarray:
         
         # allow other data types, this part should not be necessary but is nice to have in the default action parser.
         if type(actions) != np.ndarray:

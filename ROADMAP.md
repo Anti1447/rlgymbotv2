@@ -27,3 +27,5 @@
 - Policy evaluation harness with Elo vs multiple bots.
 - Experiment tracking (TensorBoard or Weights & Biases).
 - Auto-upload artifacts to GitHub Releases.
+- Add Self-play capability: pip install rlgym-tools, from rlgym_tools.extra_envs import SelfPlayEnv
+

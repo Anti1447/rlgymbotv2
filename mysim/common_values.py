@@ -25,6 +25,10 @@ BLUE_TEAM = 0
 ORANGE_TEAM = 1
 NUM_ACTIONS = 8
 
+# CONTROL_ORDER = ["throttle", "steer", "yaw", "pitch", "roll", "jump", "boost", "handbrake"] ## RocketSim order... not used!!!
+CONTROL_ORDER = ["throttle","steer","pitch","yaw","roll","jump","boost","handbrake"]
+
+
 BOOST_LOCATIONS = (
     (0.0, -4240.0, 70.0),
     (-1792.0, -4184.0, 70.0),

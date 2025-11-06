@@ -79,6 +79,42 @@ class AlignBallGoal(RewardFunction):
         offensive_reward = self.offense * math.cosine_similarity(ball - pos, attacc - pos)
 
         return defensive_reward + offensive_reward
+    
+class BadOrientationPenalty(RewardFunction):
+    """
+    Applies a small punishment when the car is on the ground but not upright.
+
+    Conditions:
+      - Player is on_ground (1)
+      - car.up().z < upright_threshold (e.g., < 0.75)
+      - Additional penalty if completely upside down (car.up().z < 0)
+    """
+
+    def __init__(self, side_penalty=0.1, upside_down_penalty=0.3, upright_threshold=0.75):
+        super().__init__()
+        self.side_penalty = side_penalty
+        self.upside_down_penalty = upside_down_penalty
+        self.upright_threshold = upright_threshold
+
+    def reset(self, initial_state: GameState):
+        pass  # stateless
+
+    def get_reward(self, player: PlayerData, state: GameState, previous_action):
+        # Skip airborne states
+        if not player.on_ground:
+            return 0.0
+
+        car_up_z = float(player.car_data.up()[2])
+
+        # Fully upright → no penalty
+        if car_up_z >= self.upright_threshold:
+            return 0.0
+
+        # On side or upside down
+        if car_up_z < 0:
+            return -self.upside_down_penalty
+        else:
+            return -self.side_penalty
 
 class BoostPickupReward(RewardFunction):
     def __init__(self, big_pad_reward=1.0, small_pad_reward=0.5):
@@ -110,6 +146,53 @@ class ConstantReward(RewardFunction):
     def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
         return 1
 
+class CollectBoostReward(RewardFunction):
+    """
+    Small shaping reward for collecting boost.
+    Rewards the agent when its boost amount increases since the last tick.
+    Favors small pads slightly more than big 100 pads to encourage better map flow.
+    """
+
+    def __init__(self, small_pad_bonus=1.0, big_pad_bonus=0.3):
+        super().__init__()
+        self.small_pad_bonus = small_pad_bonus
+        self.big_pad_bonus = big_pad_bonus
+        self.last_boost_amount = {}
+
+    def reset(self, initial_state: GameState):
+        # Track last boost amounts for all players
+        self.last_boost_amount = {
+            player.car_id: player.boost_amount for player in initial_state.players
+        }
+
+    def get_reward(
+        self,
+        player: PlayerData,
+        state: GameState,
+        previous_action: np.ndarray
+    ) -> float:
+        # Get last known boost amount
+        last = self.last_boost_amount.get(player.car_id, player.boost_amount)
+        current = player.boost_amount
+        diff = current - last
+
+        # Update tracker
+        self.last_boost_amount[player.car_id] = current
+
+        # No boost gained → no reward
+        if diff <= 0:
+            return 0.0
+
+        # Big pad usually adds ~1.0 (100%), small pad ~0.12 (12%)
+        if diff > 0.5:
+            # Big 100 pad collected → small reward
+            return self.big_pad_bonus
+        else:
+            # Small pad collected → slightly higher reward
+            # Scale smoothly with amount, capping near small_pad_bonus
+            return self.small_pad_bonus * np.clip(diff / 0.12, 0, 1)
+
+
 class InAirReward(RewardFunction): # We extend the class "RewardFunction"
     # Empty default constructor (required)
     def __init__(self):
@@ -132,6 +215,91 @@ class InAirReward(RewardFunction): # We extend the class "RewardFunction"
         else:
             # We are on ground, don't give any reward
             return 0
+        
+class RecoveryAndLandingReward(RewardFunction):
+    """
+    Combined reward encouraging:
+      1️⃣ Smooth midair recovery (staying or becoming upright)
+      2️⃣ Clean landings (on all 4 wheels)
+      3️⃣ Proper surface alignment (using surface normal if available)
+
+    Features:
+      - Rewards aligning car.up() with surface normal or +Z
+      - Detects 0→1 transitions of on_ground for landing events
+      - Punishes bad landings (angled contact)
+      - Optional bonus for landing on the ball
+    """
+
+    def __init__(
+        self,
+        upright_scale: float = 0.3,
+        recovery_scale: float = 0.2,
+        good_landing_scale: float = 1.0,
+        bad_landing_penalty: float = 0.5,
+        uprightness_weight: float = 0.2,
+    ):
+        super().__init__()
+        self.upright_scale = upright_scale
+        self.recovery_scale = recovery_scale
+        self.good_landing_scale = good_landing_scale
+        self.bad_landing_penalty = bad_landing_penalty
+        self.uprightness_weight = uprightness_weight
+
+        self._last_on_ground = {}
+        self._last_up_align = {}
+
+    # --------------------------------------------------------------
+    def reset(self, initial_state: GameState):
+        self._last_on_ground.clear()
+        self._last_up_align.clear()
+
+    # --------------------------------------------------------------
+    def get_reward(self, player: PlayerData, state: GameState, previous_action):
+        car_id = player.car_id
+        car_data = player.car_data
+        car_up = car_data.up()
+
+        # --- Step 1: Determine alignment metric ---
+        # Try to use surface normal if available
+        surface_normal = getattr(player, "surface_normal", None)
+        if surface_normal is not None:
+            align = float(np.clip(np.dot(car_up, surface_normal), -1.0, 1.0))
+        else:
+            # Fall back to global +Z axis
+            align = float(np.clip(car_up[2], -1.0, 1.0))
+
+        # --- Step 2: Midair uprightness and recovery reward ---
+        prev_align = self._last_up_align.get(car_id, align)
+        recovery_delta = max(0.0, align - prev_align)
+
+        upright_reward = align * self.upright_scale
+        recovery_reward = recovery_delta * self.recovery_scale
+        total_reward = upright_reward + recovery_reward
+
+        # --- Step 3: Landing quality evaluation ---
+        prev_ground = self._last_on_ground.get(car_id, player.on_ground)
+        curr_ground = player.on_ground
+
+        if prev_ground == 0 and curr_ground == 1:
+            # Detect transition air→contact
+            surf_obj = getattr(player, "last_hit_object", None)
+            hit_ball = surf_obj == "ball" if surf_obj is not None else False
+
+            if align > 0.85:
+                # Good landing (aligned within ~30°)
+                base = self.good_landing_scale
+                if hit_ball:
+                    base *= 1.25  # bonus for soft ball landing
+                total_reward += base + align * self.uprightness_weight
+            else:
+                # Bad landing
+                total_reward -= self.bad_landing_penalty * (1.0 - align)
+
+        # --- Step 4: Update trackers ---
+        self._last_on_ground[car_id] = curr_ground
+        self._last_up_align[car_id] = align
+
+        return float(total_reward)
 
 class SaveBoostReward(RewardFunction):
     def reset(self, initial_state: GameState):

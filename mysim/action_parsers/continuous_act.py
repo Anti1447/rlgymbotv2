@@ -4,6 +4,7 @@ import gym.spaces
 from mysim import common_values
 from mysim.gamestates import GameState
 from mysim.action_parsers import ActionParser
+from typing import Optional, Dict, Any, List
 
 
 class ContinuousAction(ActionParser):
@@ -19,7 +20,7 @@ class ContinuousAction(ActionParser):
         # return gym.spaces.Tuple((gym.spaces.Box(-1, 1, shape=(5,)), gym.spaces.MultiBinary(3)))
         return gym.spaces.Box(-1, 1, shape=(common_values.NUM_ACTIONS,))
 
-    def parse_actions(self, actions: np.ndarray, state: GameState) -> np.ndarray:
+    def parse_actions(self, actions: np.ndarray, state: GameState, shared_info: Optional[Dict[str, Any]] = None) -> np.ndarray:
         actions = actions.reshape((-1, 8))
 
         actions[..., :5] = actions[..., :5].clip(-1, 1)

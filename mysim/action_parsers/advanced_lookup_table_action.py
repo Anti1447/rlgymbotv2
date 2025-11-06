@@ -1,10 +1,18 @@
 from typing import Any, Dict
 import numpy as np
-from rlgym.rocket_league.action_parsers import LookupTableAction
+# old (deprecated and now missing)
+# from rlgym.rocket_league.action_parsers import LookupTableAction
+from mysim.action_parsers.lookup_table_action import LookupTableAction # use local version
 import gym.spaces
 from mysim.gamestates import PlayerData, GameState
 from rlgym.api import ActionParser, AgentID
+from mysim.debug_config import global_debug_mode, debug_actions
+from mysim.action_parsers.utils import get_lookup_table_size, debug_print_lut_size, find_lookup_table
 
+
+@property
+def lookup_table(self):
+    return self._lookup_table
 
 def _parse_bin(b, endpoint=True):
     if isinstance(b, int):
@@ -51,6 +59,18 @@ def _subdivide(lo, hi, depth=0):
             for ny in bins:
                 yield nx, ny
 
+# def debug_lut_size(self):
+#     lut = find_lookup_table(action_parser)  # use the recursive finder we discussed
+#     throttles = lut[:, 0]
+#     steers = lut[:, 1]
+
+#     print("Throttle min/max:", throttles.min(), throttles.max())
+#     print("Steer min/max:", steers.min(), steers.max())
+
+#     print("Num actions with throttle=1:", np.sum(throttles == 1))
+#     print("Num actions with throttle=-1:", np.sum(throttles == -1))
+#     print("Num actions with abs(steer)>0.5:", np.sum(np.abs(steers) > 0.5))
+
 
 class AdvancedLookupTableAction(LookupTableAction):
     def __init__(self, throttle_bins: Any = 3,
@@ -65,6 +85,39 @@ class AdvancedLookupTableAction(LookupTableAction):
     def get_action_space(self) -> gym.spaces.Space:
         return gym.spaces.MultiDiscrete([len(self._lookup_table)])
     
+    def parse_actions(self, actions, state=None, shared_info=None):
+        """
+        Map integer action indices to their 8D control vectors.
+        Always returns a list of np.ndarrays for wrapper compatibility.
+        """
+        # Handle dict format (common in multi-agent setups)
+        if isinstance(actions, dict):
+            parsed = {}
+            for agent_id, act in actions.items():
+                idx = int(np.squeeze(act))
+                idx = np.clip(idx, 0, len(self._lookup_table) - 1)
+                parsed[agent_id] = self._lookup_table[idx]
+            # Return as list for downstream wrappers
+            return [v for v in parsed.values()]
+
+        # Handle numpy array or list
+        arr = np.asarray(actions)
+        if arr.ndim == 1:
+            idxs = np.clip(arr.astype(int), 0, len(self._lookup_table) - 1)
+            controls = self._lookup_table[idxs]
+        elif arr.ndim == 2 and arr.shape[1] == 1:
+            idxs = np.clip(arr.squeeze(1).astype(int), 0, len(self._lookup_table) - 1)
+            controls = self._lookup_table[idxs]
+        elif arr.ndim == 2 and arr.shape[1] == 8:
+            # Already a decoded control vector (passed through another wrapper)
+            return [arr.astype(np.float32)]
+        else:
+            raise ValueError(f"Unexpected action shape: {arr.shape}")
+
+        # Always return list for wrapper compatibility
+        return [np.asarray(controls, dtype=np.float32)]
+
+
     @staticmethod
     def make_lookup_table(throttle_bins: Any = 3,
                           steer_bins: Any = 3,
@@ -100,8 +153,8 @@ class AdvancedLookupTableAction(LookupTableAction):
             for steer in steer_bins:
                 for boost in (0, 1):
                     for handbrake in (0, 1):
-                        if boost == 1 and throttle != 1:
-                            continue
+                        # if boost == 1 and throttle != 1: #commenting out for now... 10/19/25 DEBUG
+                        #     continue
                         yaw = steer
                         actions.append([throttle, steer, pitch, yaw, roll, jump, boost, handbrake])
 
@@ -145,7 +198,12 @@ class AdvancedLookupTableAction(LookupTableAction):
             actions.append([0, 0, 0, 1, -1, 1, 0, 1])
             actions.append([0, 0, 0, -1, 1, 1, 0, 1])
 
-        actions = np.round(np.array(actions), 3)  # Convert to numpy and remove floating point errors
-        assert len(np.unique(actions, axis=0)) == len(actions), 'Duplicate actions found'
+        # Convert to numpy and remove floating point errors
+        actions = np.round(np.array(actions), 3)
 
+        # 🧹 Remove stationary spin / pure yaw actions (throttle=0, only yaw active)
+        mask = ~((actions[:, 0] == 0) & (np.abs(actions[:, 3]) == 1) & (np.sum(np.abs(actions[:, 1:]), axis=1) == 1))
+        actions = actions[mask]
+
+        assert len(np.unique(actions, axis=0)) == len(actions), "Duplicate actions found"
         return actions

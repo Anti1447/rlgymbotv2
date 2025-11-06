@@ -16,15 +16,9 @@
 from collections import deque
 from typing import List, Tuple
 import numpy as np
-
-try:
-    # RLGym public names
-    from rlgym.utils.obs_builders import ObsBuilder
-    from rlgym.utils.gamestates import GameState, PlayerData, PhysicsObject
-except Exception:
-    # Fall back to your local project layout if needed
-    from obs_builder import ObsBuilder  # noqa
-    from mysim.gamestates import GameState, PlayerData, PhysicsObject  # noqa
+from mysim.obs_builders import ObsBuilder  # noqa
+from mysim.gamestates import GameState, PlayerData, PhysicsObject  # noqa
+from typing import Optional
 
 
 def _norm_clip(x, lo=-1.0, hi=1.0):
@@ -58,6 +52,7 @@ class AdvancedObsPlus(ObsBuilder):
         k_nearest_pads_ball: int = 2,
         stack_size: int = 1,           # set to 3 or 4 to enable tiny temporal stacking
         include_prev_action: bool = True,
+        action_lookup: Optional[np.ndarray] = None,  # for LUT index -> 8-dim action conversion
     ):
         super().__init__()
         self.max_allies = max_allies
@@ -66,11 +61,12 @@ class AdvancedObsPlus(ObsBuilder):
         self.k_nearest_pads_ball = k_nearest_pads_ball
         self.stack_size = max(1, int(stack_size))
         self.include_prev_action = include_prev_action
+        self.action_lookup = action_lookup
 
         # per-player rolling buffer (by car_id) if stacking is used
         self._stacks = {}
         self._cached = None     # filled in pre_step
-        self._obs_size = None   # populated after first build
+        self._obs_size = self._calc_obs_len()
 
     # ---------- Helpers ----------
 
@@ -154,16 +150,31 @@ class AdvancedObsPlus(ObsBuilder):
             ),
         }
 
+    
+    def _calc_obs_len(self) -> int:
+        # per-step (no stacking) feature counts
+        ball_rel = 3 + 3                        
+        # rel pos + rel vel
+        # me = 3 + 3 + 1 + 1   # vel + angvel + boost + has_flip   (CURRENT)
+        # Add: on_ground (+1) and up_z (+1)  -> +2 total
+        me = 3 + 3 + 1 + 1 + 1 + 1
+        # If instead you want full up vector (+3) replace the last +1 with +3.
+        ctx = 3                                 # kickoff, time_left, score_diff
+        act = (8 if self.include_prev_action else 0) + 2   # prev action (8) + [can_boost, can_flip]
+        other_per = 3 + 3 + 3 + 2               # rel_p, rel_v, rel_w, [boost, alive] = 11
+        allies = self.max_allies * other_per
+        opps = self.max_opponents * other_per
+        pads = (self.k_nearest_pads_me * 6) + (self.k_nearest_pads_ball * 6)  # each: [rel(3), is_big, active, timer] = 6
+        goals = 3 + 3                            # ball->their_goal, ball->my_goal
+        base = ball_rel + me + ctx + act + allies + opps + pads + goals
+        return base * self.stack_size
+
     def get_obs_space(self):
-        # Filled after the first build. Keeps things flexible across action sizes.
         try:
             import gym
             from gym.spaces import Box
         except Exception:
             return None
-        if self._obs_size is None:
-            # A conservative placeholder – updated after first build
-            return Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
         return Box(low=-1.0, high=1.0, shape=(self._obs_size,), dtype=np.float32)
 
     def build_obs(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> np.ndarray:
@@ -188,7 +199,25 @@ class AdvancedObsPlus(ObsBuilder):
         my_vel_cf = to_car(my_car.linear_velocity) / self.VEL_MAX
         my_angvel_cf = to_car(my_car.angular_velocity) / self.ANG_VEL_MAX
         my_boost = np.array([player.boost_amount / self.BOOST_MAX], dtype=np.float32)
-        has_flip = np.array([float(getattr(player, "has_flip", True))], dtype=np.float32)
+        
+        # Robust has_flip
+        _has_flip = getattr(player, "has_flip", None)
+        if _has_flip is None and hasattr(player, "car_data"):
+            _has_flip = getattr(player.car_data, "has_flip", None)
+        if _has_flip is None:
+            _has_flip = True  # conservative default
+        has_flip = np.array([float(_has_flip)], dtype=np.float32)
+
+        # Robust on_ground
+        _on_ground = getattr(my_car, "on_ground", None)
+        if _on_ground is None:
+            _on_ground = getattr(player, "on_ground", False)
+        on_ground = np.array([float(bool(_on_ground))], dtype=np.float32)
+
+        # Car up() in world frame
+        up_world = np.asarray(my_car.up(), dtype=np.float32)
+        up_z = np.array([float(up_world[2])], dtype=np.float32)   # preferred minimal feature
+        # If you want the full vector, normalize (should already be unit) and use up_world itself.
 
         # --- Game context (tiny, high-value) ---
         # Score diff from my perspective (Blue canonical frame)
@@ -202,16 +231,34 @@ class AdvancedObsPlus(ObsBuilder):
 
         # --- Action awareness ---
         act_bits = []
+
         if self.include_prev_action and previous_action is not None:
-            # Clip to [-1,1], also add legal-useful flags
-            prev = np.asarray(previous_action, dtype=np.float32).ravel()
-            prev = _norm_clip(prev, -1.0, 1.0)
+            prev = np.asarray(previous_action)
+
+            # If RepeatAction is used, take the last tick
+            if prev.ndim == 2:            # (T,1) or (T,8)
+                prev = prev[-1]
+
+            prev = prev.ravel()            # (1,) index OR (8,) vector
+
+            if prev.size == 1 and self.action_lookup is not None:
+                # scalar LUT index -> 8-dim action
+                idx = int(prev[0])
+                idx = max(0, min(idx, len(self.action_lookup) - 1))
+                prev = self.action_lookup[idx]
+            elif prev.size != 8:
+                # Unexpected shape: fall back to zeros to keep obs length deterministic
+                prev = np.zeros(8, dtype=np.float32)
+
+            prev = _norm_clip(prev, -1.0, 1.0).astype(np.float32)
             act_bits.append(prev)
+
         # Minimal action mask bits
         act_bits.append(np.array([
-            my_boost[0] > 0.0,    # can_boost
-            has_flip[0] > 0.5     # can_flip
+            1.0 if my_boost[0] > 0.0 else 0.0,   # can_boost
+            1.0 if has_flip[0] > 0.5 else 0.0    # can_flip
         ], dtype=np.float32))
+
         action_feat = np.concatenate(act_bits, dtype=np.float32)
 
         # --- Others (sorted by distance to BALL, then split into allies/opps) ---
@@ -222,19 +269,24 @@ class AdvancedObsPlus(ObsBuilder):
         opps   = [(p, car) for (p, car) in others if p.team_num != player.team_num]
 
         def encode_other(pc_list: List[Tuple[PlayerData, PhysicsObject]], k: int) -> np.ndarray:
+            # If caller requested zero slots (e.g., 1v0 setup), return empty vector.
+            if k <= 0:
+                return np.zeros(0, dtype=np.float32)
+
             feats = []
+            FEAT_LEN = 3 + 3 + 3 + 2  # rel_p, rel_v, rel_w, [boost, alive] = 11
             for i in range(k):
                 if i < len(pc_list):
                     p, car = pc_list[i]
-                    # Relative to ME in my car frame
                     rel_p = to_car(car.position - my_car.position) / self.POS_MAX
                     rel_v = to_car(car.linear_velocity - my_car.linear_velocity) / self.VEL_MAX
                     rel_w = to_car(car.angular_velocity - my_car.angular_velocity) / self.ANG_VEL_MAX
                     b = getattr(p, "boost_amount", 0.0) / self.BOOST_MAX
                     alive = 1.0 - float(getattr(p, "is_demoed", False))
-                    feats.append(np.hstack([rel_p, rel_v, rel_w, [b, alive]]))
+                    feats.append(np.hstack([rel_p, rel_v, rel_w, [b, alive]]).astype(np.float32))
                 else:
-                    feats.append(np.zeros(3 + 3 + 3 + 2, dtype=np.float32))
+                    feats.append(np.zeros(FEAT_LEN, dtype=np.float32))
+            # feats is guaranteed non-empty here because k>0
             return np.concatenate(feats, dtype=np.float32)
 
         ally_feat = encode_other(allies, self.max_allies)
@@ -290,6 +342,7 @@ class AdvancedObsPlus(ObsBuilder):
         step_vec = np.concatenate([
             rel_ball_pos, rel_ball_vel,
             my_vel_cf, my_angvel_cf, my_boost, has_flip,
+            on_ground, up_z,              # <— add here (or replace up_z with up_world)
             ctx,
             action_feat,
             ally_feat, opp_feat,
@@ -311,4 +364,5 @@ class AdvancedObsPlus(ObsBuilder):
 
         if self._obs_size is None:
             self._obs_size = int(vec.size)
+        vec = np.clip(vec, -1.0, 1.0).astype(np.float32) #That keeps the data consistent with the advertised observation space, which some algos assume.
         return vec
