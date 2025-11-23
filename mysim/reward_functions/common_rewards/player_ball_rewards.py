@@ -1,9 +1,9 @@
 import numpy as np
 
-from mysim import RewardFunction, math
-from mysim.common_values import BALL_RADIUS, CAR_MAX_SPEED
-from mysim.gamestates import GameState, PlayerData
-from mysim.common_values import CEILING_Z, BLUE_TEAM, ORANGE_GOAL_BACK, BLUE_GOAL_BACK
+from rlgymbotv2.mysim import RewardFunction, math
+from rlgymbotv2.mysim.common_values import BALL_RADIUS, CAR_MAX_SPEED
+from rlgymbotv2.mysim.gamestates import GameState, PlayerData
+from rlgymbotv2.mysim.common_values import CEILING_Z, BLUE_TEAM, ORANGE_GOAL_BACK, BLUE_GOAL_BACK
 
 class AirTouchReward(RewardFunction):
     """
@@ -368,7 +368,7 @@ class PossessionReward(RewardFunction):
         return 0.0
     
 # Import CAR_MAX_SPEED from common game values
-from mysim.common_values import CAR_MAX_SPEED
+from rlgymbotv2.mysim.common_values import CAR_MAX_SPEED
 
 class SpeedTowardBallReward(RewardFunction):
     # Default constructor

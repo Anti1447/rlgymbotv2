@@ -1,6 +1,6 @@
-from mysim.state_setters import StateSetter
-from mysim.state_setters import StateWrapper
-from mysim.math import rand_vec3
+from rlgymbotv2.mysim.state_setters import StateSetter
+from rlgymbotv2.mysim.state_setters import StateWrapper
+from rlgymbotv2.mysim.math import rand_vec3
 import numpy as np
 from numpy import random as rand
 

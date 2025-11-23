@@ -1,8 +1,8 @@
 from typing import Any
 import numpy as np
 import gym.spaces
-from mysim.action_parsers.lookup_table_action import LookupTableAction
-from mysim.gamestates import PlayerData, GameState
+from rlgymbotv2.mysim.action_parsers.lookup_table_action import LookupTableAction
+from rlgymbotv2.mysim.gamestates import PlayerData, GameState
 
 
 def _parse_bin(b, endpoint=True):

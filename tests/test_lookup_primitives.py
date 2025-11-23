@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
+from rlgymbotv2.mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
 
 # Control order (as implemented in your parser):
 # [throttle, steer, pitch, yaw, roll, jump, boost, handbrake]

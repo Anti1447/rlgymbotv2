@@ -6,21 +6,21 @@
 # Author: NJH
 ################################
 import numpy as np
-from mysim.gamestates import GameState
+from rlgymbotv2.mysim.gamestates import GameState
 from rlgym_ppo.util import MetricsLogger
 from pathlib import Path
-from mysim.reward_functions.common_rewards import *
+from rlgymbotv2.mysim.reward_functions.common_rewards import *
 from rlgym_ppo import Learner
 import json
 import re
 from datetime import datetime
 import torch, os
-from mysim.action_parsers.utils import get_lookup_table_size
-from mysim.debug_config import global_debug_mode, debug_actions, debug_learning
-from mysim.training_utils.checkpoint_utils import (
+from rlgymbotv2.mysim.action_parsers.utils import get_lookup_table_size
+from rlgymbotv2.mysim.debug_config import global_debug_mode, debug_actions, debug_learning
+from rlgymbotv2.mysim.training_utils.checkpoint_utils import (
     make_run_dir, latest_checkpoint_folder, read_meta, write_meta, shapes_match, summarize_checkpoints
 )
-from mysim.debug_tools import debug_controls_sample
+from rlgymbotv2.mysim.debug_tools import debug_controls_sample
 
 
 if global_debug_mode or debug_actions or debug_learning:
@@ -83,8 +83,8 @@ def debug_controls_sample(action_parser, env):
         print(f"{i}: {c:.2f}")
 
 def build_reward_function(phase=1):
-    from mysim.reward_functions import CombinedReward
-    from mysim.reward_functions.common_rewards import (
+    from rlgymbotv2.mysim.reward_functions import CombinedReward
+    from rlgymbotv2.mysim.reward_functions.common_rewards import (
         EventReward, SpeedTowardBallReward, FaceBallReward, VelocityReward, InAirReward,
         VelocityBallToGoalReward, StrongHitReward
     )
@@ -108,10 +108,10 @@ def build_reward_function(phase=1):
 
 def build_rocketsim_env():
     import rlgym_sim
-    from mysim.reward_functions import CombinedReward
+    from rlgymbotv2.mysim.reward_functions import CombinedReward
 
     # from rlgym_sim.utils.reward_functions import CombinedReward
-    from mysim.reward_functions.common_rewards import (
+    from rlgymbotv2.mysim.reward_functions.common_rewards import (
         VelocityPlayerToBallReward,
         VelocityBallToGoalReward,
         EventReward,
@@ -156,24 +156,24 @@ def build_rocketsim_env():
     #     PunishIfInNet,
     #     StealBoostReward
     # )
-    from mysim.obs_builders import DefaultObs
-    from mysim.terminal_conditions.common_conditions import TimeoutCondition, NoTouchTimeoutCondition, GoalScoredCondition
-    from mysim.reward_functions.common_rewards.conditional_rewards import GoalIfTouchedLastConditionalReward
-    from mysim import common_values
-    from mysim.state_setters import RandomState
-    from mysim.action_parsers import DiscreteAction
-    from mysim.action_parsers import AdvancedLookupTableAction
-    from mysim.action_parsers.continuous_act import ContinuousAction
-    from mysim.action_parsers.wrappers.clip_action_wrapper import ClipActionWrapper
-    from mysim.action_parsers.wrappers.sticky_buttons_wrapper import StickyButtonsWrapper
-    from mysim.action_parsers.wrappers.state_aware_lut_wrapper import StateAwareLUTWrapper
-    from mysim.action_parsers.wrappers.repeat_action import RepeatAction
-    from mysim.action_parsers.wrappers.collapse_to_single_tick import CollapseToSingleTick
-    from mysim.action_parsers.wrappers.expand_to_tick_skip import ExpandToTickSkip
-    from mysim.action_parsers.wrappers.expand_for_rocketsim import ExpandForRocketSim
-    from mysim.action_parsers.wrappers.final_rocketsim_adapter import FinalRocketSimAdapter
-    from mysim.action_parsers.utils import find_forward_fallback_idx
-    from mysim.action_parsers.simple_lookup_discrete_action import SimpleLookupDiscreteAction
+    from rlgymbotv2.mysim.obs_builders import DefaultObs
+    from rlgymbotv2.mysim.terminal_conditions.common_conditions import TimeoutCondition, NoTouchTimeoutCondition, GoalScoredCondition
+    from rlgymbotv2.mysim.reward_functions.common_rewards.conditional_rewards import GoalIfTouchedLastConditionalReward
+    from rlgymbotv2.mysim import common_values
+    from rlgymbotv2.mysim.state_setters import RandomState
+    from rlgymbotv2.mysim.action_parsers import DiscreteAction
+    from rlgymbotv2.mysim.action_parsers import AdvancedLookupTableAction
+    from rlgymbotv2.mysim.action_parsers.continuous_act import ContinuousAction
+    from rlgymbotv2.mysim.action_parsers.wrappers.clip_action_wrapper import ClipActionWrapper
+    from rlgymbotv2.mysim.action_parsers.wrappers.sticky_buttons_wrapper import StickyButtonsWrapper
+    from rlgymbotv2.mysim.action_parsers.wrappers.state_aware_lut_wrapper import StateAwareLUTWrapper
+    from rlgymbotv2.mysim.action_parsers.wrappers.repeat_action import RepeatAction
+    from rlgymbotv2.mysim.action_parsers.wrappers.collapse_to_single_tick import CollapseToSingleTick
+    from rlgymbotv2.mysim.action_parsers.wrappers.expand_to_tick_skip import ExpandToTickSkip
+    from rlgymbotv2.mysim.action_parsers.wrappers.expand_for_rocketsim import ExpandForRocketSim
+    from rlgymbotv2.mysim.action_parsers.wrappers.final_rocketsim_adapter import FinalRocketSimAdapter
+    from rlgymbotv2.mysim.action_parsers.utils import find_forward_fallback_idx
+    from rlgymbotv2.mysim.action_parsers.simple_lookup_discrete_action import SimpleLookupDiscreteAction
 
 
     spawn_opponents = False
@@ -337,7 +337,7 @@ def build_rocketsim_env():
     #                        ang_coef=1 / np.pi,
     #                        lin_vel_coef=1 / common_values.CAR_MAX_SPEED,
     #                        ang_vel_coef=1 / common_values.CAR_MAX_ANG_VEL)
-    from mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
+    from rlgymbotv2.mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
     obs_builder = AdvancedObsPlus( #added 10/12/25
         max_allies=2,             # adjust to your team sizes
         max_opponents=3,          # adjust to your scrim sizes

@@ -2,7 +2,7 @@
 Base state setter class.
 """
 from abc import ABC, abstractmethod
-from mysim.state_setters.wrappers.state_wrapper import StateWrapper
+from rlgymbotv2.mysim.state_setters.wrappers.state_wrapper import StateWrapper
 
 
 class StateSetter(ABC):

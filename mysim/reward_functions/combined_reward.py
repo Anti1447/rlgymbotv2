@@ -1,8 +1,8 @@
 from typing import Any, Optional, Tuple, overload, Union
 
 import numpy as np
-from mysim.reward_functions import RewardFunction
-from mysim.gamestates import GameState, PlayerData
+from rlgymbotv2.mysim.reward_functions import RewardFunction
+from rlgymbotv2.mysim.gamestates import GameState, PlayerData
 
 
 class CombinedReward(RewardFunction):

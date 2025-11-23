@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any, List, Union
 import numpy as np
 import gym.spaces
 from rlgym.api import ActionParser, AgentID
-from mysim.gamestates import GameState
+from rlgymbotv2.mysim.gamestates import GameState
 
 class LookupTableAction(ActionParser[AgentID, np.ndarray, np.ndarray, GameState, gym.spaces.Space]):
     def __init__(self):

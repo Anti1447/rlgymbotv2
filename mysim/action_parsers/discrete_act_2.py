@@ -1,8 +1,8 @@
 import numpy as np
 import gym.spaces
 from typing import Optional, Dict, Any, Sequence
-from mysim.gamestates import GameState
-from mysim.action_parsers import ActionParser
+from rlgymbotv2.mysim.gamestates import GameState
+from rlgymbotv2.mysim.action_parsers import ActionParser
 
 class DiscreteAction2(ActionParser):
     """

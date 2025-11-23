@@ -1,7 +1,7 @@
 import numpy as np
 
 def debug_controls_sample(action_parser, env):
-    from mysim.action_parsers.utils import get_lookup_table_size
+    from rlgymbotv2.mysim.action_parsers.utils import get_lookup_table_size
     N = get_lookup_table_size(action_parser)
     a = np.random.randint(0, N, size=(1,))
     parsed = action_parser.parse_actions(a, env._prev_state)

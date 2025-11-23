@@ -9,49 +9,63 @@ Revision: 1.0.0 – 2025-10-10
 """
 # Imports
 import numpy as np
-from mysim.gamestates import GameState
-from rlgym_ppo.util import MetricsLogger
+from rlgymbotv2.mysim.gamestates import GameState
 from pathlib import Path
-from mysim.reward_functions.common_rewards import *
+from rlgymbotv2.mysim.reward_functions.common_rewards import *
 from rlgym_ppo import Learner
+from rlgym_ppo.util import MetricsLogger
 import json
 import re
 from datetime import datetime
 import torch, os
-from mysim.action_parsers.utils import get_lookup_table_size, find_lookup_table
-from mysim.debug_config import global_debug_mode, debug_actions, debug_learning, debug_checkpoints, debug_turtled_start
-from mysim.training_utils.checkpoint_utils import (
+from rlgymbotv2.mysim.action_parsers.utils import get_lookup_table_size, find_lookup_table
+from rlgymbotv2.mysim.debug_config import global_debug_mode, debug_actions, debug_learning, debug_checkpoints, debug_turtled_start
+from rlgymbotv2.mysim.training_utils.checkpoint_utils import (
     make_run_dir, latest_checkpoint_folder, read_meta, write_meta, shapes_match, summarize_checkpoints, choose_checkpoint
 )
-from mysim.training_utils.milestone_utils import make_milestone_dir, promote_to_release, choose_milestone
-from mysim.debug_tools import debug_controls_sample
-from mysim.common_values import CONTROL_ORDER
-from mysim.action_parsers.advanced_lookup_table_action_plus import AdvancedLookupTableActionPlus
-from mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
+from rlgymbotv2.mysim.training_utils.milestone_utils import make_milestone_dir, promote_to_release, choose_milestone
+from rlgymbotv2.mysim.debug_tools import debug_controls_sample
+from rlgymbotv2.mysim.common_values import CONTROL_ORDER
+from rlgymbotv2.mysim.action_parsers.advanced_lookup_table_action_plus import AdvancedLookupTableActionPlus
+from rlgymbotv2.mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
+from rlgymbotv2.mysim.training_utils.selfplay_pool import SelfPlayOpponentPool
+# from rlgymbotv2.training.selfplay_eval import run_selfplay_eval  # once wired
+
 
 
 
 if global_debug_mode or debug_actions or debug_learning or debug_checkpoints or debug_turtled_start:
     print("Debug Mode Active")
 
-# Constants
-CHECKPOINT_ROOT = Path("data/checkpoints")
+# Base directory for data/checkpoints (inside the rlgymbotv2 package)
+BASE_DIR = Path(__file__).resolve().parent.parent  # .../rlgymbotv2
+CHECKPOINT_ROOT = BASE_DIR / "data" / "checkpoints"
 CHECKPOINT_MILESTONE_ROOT = CHECKPOINT_ROOT / "milestones"
+
+if debug_checkpoints or global_debug_mode:
+    from rlgymbotv2.mysim.debug_config import dprint
+    dprint("[DEBUG] CHECKPOINT_ROOT set to:", CHECKPOINT_ROOT.resolve())
+    dprint("[DEBUG] CHECKPOINT_MILESTONE_ROOT set to:", CHECKPOINT_MILESTONE_ROOT.resolve())
+
 
 # === TRAINING CONFIG ===
 START_FRESH = False
 INTERACTIVE_RESUME = True  # Set to True to choose from available checkpoints interactively
 CUSTOM_CKPT_PATH = None
 MILESTONE_INTERVAL = 5_000_000  # every 5 million steps
-SAVE_EVERY = 50_000
+SAVE_EVERY = 100_000 # save checkpoint every 50k steps
+# batch size - much higher than 300K doesn't seem to help most people. Keep this equal to ts_per_iteration. 
+                      # 50k is good for early learning. 100k after bot can hit the ball. Once bot is shooting & scoring, set to 200k or 300k.
 N_PROC_DEBUG = 1
-N_PROC_TRAIN = 32 # 64 is too high for this computer's RAM/GPU
+N_PROC_TRAIN = 64 # 64 is too high for this computer's RAM/GPU
 POLICY_LAYERS = [1024, 1024, 512, 512]
 CRITIC_LAYERS = [1024, 1024, 512, 512]
+SELFPLAY_ENABLED = False  # only turn this on once bot can consistently score
+
 
 # === Learning Rates ===
-POLICY_LEARNING_RATE = 2e-4  # policy learning rate
-CRITIC_LEARNING_RATE = 2e-4  # critic learning rate
+POLICY_LEARNING_RATE = 1e-4  # policy learning rate
+CRITIC_LEARNING_RATE = 1e-4  # critic learning rate
 #Bot that can't score yet: 2e-4
 #Bot that is actually trying to score on its opponent: 1e-4
 #Bot that is learning outplay mechanics (dribbling and flicking, air dribbles, etc.): 0.8e-4 or lower
@@ -179,10 +193,11 @@ def is_turtled(car_data, up_thresh=-0.2):
 
 
 def build_reward_function(phase=PHASE):
-    from mysim.reward_functions import CombinedReward
-    from mysim.reward_functions.common_rewards import (
+    from rlgymbotv2.mysim.reward_functions import CombinedReward
+    from rlgymbotv2.mysim.reward_functions.common_rewards import (
         EventReward, SpeedTowardBallReward, FaceBallReward, VelocityReward, InAirReward,
-        VelocityBallToGoalReward, StrongHitReward, RecoveryAndLandingReward, BadOrientationPenalty
+        VelocityBallToGoalReward, StrongHitReward, RecoveryAndLandingReward, BadOrientationPenalty,
+        NegativeVelocityTowardOwnGoalReward, BasicShotReward, ClearReward, LiuDistanceBallToGoalReward
     )
     if global_debug_mode:
         print(f"[reward] Building reward function for phase {phase}")
@@ -200,63 +215,87 @@ def build_reward_function(phase=PHASE):
         return CombinedReward.from_zipped(
             (EventReward(goal=1), 20.0),
             (EventReward(concede=1), -10.0), # punish goal conceded
-            (EventReward(touch=1), 3.0),
-            (VelocityBallToGoalReward(), 5.0),
-            (SpeedTowardBallReward(), 2.0),
-            (FaceBallReward(), 0.5),
-            (VelocityReward(), 0.3),
-            (RecoveryAndLandingReward(), 0.2),
-            (BadOrientationPenalty(), 0.2),
-            (InAirReward(), 0.15)
-        )
-    elif phase == 3: # Silver Skills 1. More shooting, more scoring, stronger hits. Begin adding jump shots and dribbling. Add boost rewards.
-        return CombinedReward.from_zipped(
-            (EventReward(goal=1), 20.0),
-            (EventReward(concede=1), -10.0), # punish goal conceded
             (VelocityBallToGoalReward(), 8.0),
-            (StrongHitReward(), 6.0),
-            (JumpShotReward(), 4.0),
-            (SpeedTowardBallReward(), 2.0),
-            (DribblingReward(), 2.0),
-            (FaceBallReward(), 0.5),
-            (SaveBoostReward(), 0.5),
-            (StealBoostReward(), 0.3),
-            (VelocityReward(), 0.3),
-            (BadOrientationPenalty(), 0.15),
-            (CollectBoostReward(), 0.15),
-            (InAirReward(), 0.1),
-            (RecoveryAndLandingReward(), 0.1)
-        )
-    elif phase == 4: # Silver Skills 2. Even more shooting and scoring emphasis. Stronger hits. More dribbling and flicks.
-        return CombinedReward.from_zipped(
-            (EventReward(goal=1), 25.0),
-            (EventReward(concede=1), -12.0), # punish goal conceded
-            (VelocityBallToGoalReward(), 5.0),
             (LiuDistanceBallToGoalReward(), 5.0),
-            (BasicAerialReward(), 5.0),
-            (BasicWallHitReward(), 5.0),
-            (StrongHitReward(), 4.0),
-            (JumpShotReward(), 3.0),
-            (BasicShotReward(), 3.0),
+            (StrongHitReward(), 5.0),
+            (NegativeVelocityTowardOwnGoalReward(), -4.0),
+            (BasicShotReward(), 4.0),
             (SpeedTowardBallReward(), 3.0),
-            (DribblingReward(), 2.0),
-            (FaceBallReward(), 0.7),
-            (SaveBoostReward(), 0.7),
-            (StealBoostReward(), 0.5),
-            (VelocityReward(), 0.4),
-            (BadOrientationPenalty(), 0.1),
-            (CollectBoostReward(), 0.1),
-            (InAirReward(), 0.1),
-            (RecoveryAndLandingReward(), 0.1)
+            (ClearReward(), 3.0),
+            (FaceBallReward(), 1.0),
+            (VelocityReward(), 0.3),
+            (BadOrientationPenalty(), 0.2),
+            (InAirReward(), 0.1)
         )
+    elif phase == 3:  # SilverSkills1 — clean shooting fundamentals
+        return CombinedReward.from_zipped(
+            # Scoring & aggression
+            (EventReward(goal=1), 25.0),
+            (EventReward(concede=1), -8.0),
+
+            # Shooting trajectory reward (primary driver)
+            (VelocityBallToGoalReward(), 8.0),
+            (LiuDistanceBallToGoalReward(), 3.0),
+            (NegativeVelocityTowardOwnGoalReward(), -4.0),
+            (LiuDistancePlayerToBallReward(), 1.0),
+
+            # Strong hits > weak taps
+            (StrongHitReward(), 5.0),
+            
+
+            # Encourage purposeful jump touches (but don’t force aerials yet)
+            (JumpShotReward(), 2.5),
+
+            # This helps cutting/positioning a LOT in Silver
+            (FaceBallReward(), 1.0),
+
+            # Mild ball-chasing shaping
+            (SpeedTowardBallReward(), 1.0),
+
+            # Boost discipline (light touch)
+            (SaveBoostReward(), 0.4),
+
+            # Clean movement
+            (RecoveryAndLandingReward(), 0.1),
+            (BadOrientationPenalty(), 0.1),
+            (InAirReward(), 0.075),
+        )
+
+    elif phase == 4:  # GoldSkills1 — shooting consistency + basic aerials
+        return CombinedReward.from_zipped(
+            # Scoring + aggression
+            (EventReward(goal=1), 20.0),
+            (EventReward(concede=1), -10.0),
+
+            # Better shooting (main reward)
+            (VelocityBallToGoalReward(), 10.0),
+
+            # Strong shots + stable touches
+            (StrongHitReward(), 5.0),
+            (BasicShotReward(), 4.0),
+
+            # Encourage simple aerial attempts (low-weight)
+            (BasicAerialReward(), 4.0),
+
+            # Boost economy: now important
+            (SaveBoostReward(), 0.8),
+            (CollectBoostReward(), 0.3),
+
+            # Movement shaping
+            (FaceBallReward(), 1.0),
+            (SpeedTowardBallReward(), 1.0),
+            (RecoveryAndLandingReward(), 0.3),
+            (BadOrientationPenalty(), 0.1),
+        )
+
 
 
 def build_rocketsim_env():
     import rlgym_sim
-    from mysim.reward_functions import CombinedReward
+    from rlgymbotv2.mysim.reward_functions import CombinedReward
 
     # from rlgym_sim.utils.reward_functions import CombinedReward
-    from mysim.reward_functions.common_rewards import (
+    from rlgymbotv2.mysim.reward_functions.common_rewards import (
         VelocityPlayerToBallReward,
         VelocityBallToGoalReward,
         EventReward,
@@ -277,23 +316,23 @@ def build_rocketsim_env():
         PunishIfInNet,
         StealBoostReward
     )
-    from mysim.obs_builders import DefaultObs
-    from mysim.terminal_conditions.common_conditions import TimeoutCondition, NoTouchTimeoutCondition, GoalScoredCondition
-    from mysim.reward_functions.common_rewards.conditional_rewards import GoalIfTouchedLastConditionalReward
-    from mysim import common_values
-    from mysim.state_setters import RandomState
-    from mysim.action_parsers.discrete_act_2 import DiscreteAction2
-    from mysim.action_parsers import AdvancedLookupTableAction
-    from mysim.action_parsers.continuous_act import ContinuousAction
-    from mysim.action_parsers.wrappers.clip_action_wrapper import ClipActionWrapper
-    from mysim.action_parsers.wrappers.sticky_buttons_wrapper import StickyButtonsWrapper
-    from mysim.action_parsers.wrappers.state_aware_lut_wrapper import StateAwareLUTWrapper
-    from mysim.action_parsers.wrappers.repeat_action import RepeatAction
-    from mysim.action_parsers.wrappers.collapse_to_single_tick import CollapseToSingleTick
-    from mysim.action_parsers.wrappers.expand_to_tick_skip import ExpandToTickSkip
-    from mysim.action_parsers.wrappers.expand_for_rocketsim import ExpandForRocketSim
-    from mysim.action_parsers.wrappers.final_rocketsim_adapter import FinalRocketSimAdapter
-    from mysim.action_parsers.utils import find_forward_fallback_idx
+    from rlgymbotv2.mysim.obs_builders import DefaultObs
+    from rlgymbotv2.mysim.terminal_conditions.common_conditions import TimeoutCondition, NoTouchTimeoutCondition, GoalScoredCondition
+    from rlgymbotv2.mysim.reward_functions.common_rewards.conditional_rewards import GoalIfTouchedLastConditionalReward
+    from rlgymbotv2.mysim import common_values
+    from rlgymbotv2.mysim.state_setters import RandomState
+    from rlgymbotv2.mysim.action_parsers.discrete_act_2 import DiscreteAction2
+    from rlgymbotv2.mysim.action_parsers import AdvancedLookupTableAction
+    from rlgymbotv2.mysim.action_parsers.continuous_act import ContinuousAction
+    from rlgymbotv2.mysim.action_parsers.wrappers.clip_action_wrapper import ClipActionWrapper
+    from rlgymbotv2.mysim.action_parsers.wrappers.sticky_buttons_wrapper import StickyButtonsWrapper
+    from rlgymbotv2.mysim.action_parsers.wrappers.state_aware_lut_wrapper import StateAwareLUTWrapper
+    from rlgymbotv2.mysim.action_parsers.wrappers.repeat_action import RepeatAction
+    from rlgymbotv2.mysim.action_parsers.wrappers.collapse_to_single_tick import CollapseToSingleTick
+    from rlgymbotv2.mysim.action_parsers.wrappers.expand_to_tick_skip import ExpandToTickSkip
+    from rlgymbotv2.mysim.action_parsers.wrappers.expand_for_rocketsim import ExpandForRocketSim
+    from rlgymbotv2.mysim.action_parsers.wrappers.final_rocketsim_adapter import FinalRocketSimAdapter
+    from rlgymbotv2.mysim.action_parsers.utils import find_forward_fallback_idx
 
 
     spawn_opponents = False
@@ -321,7 +360,7 @@ def build_rocketsim_env():
     #     lut = find_lookup_table(action_parser)
 
     #     if lut is not None and global_debug_mode or debug_actions:
-    #         from mysim.debug_tools import list_turning_actions
+    #         from rlgymbotv2.mysim.debug_tools import list_turning_actions
     #         list_turning_actions(lut)
     #         print("Unique steer values:", np.unique(lut[:, 1]))
     #         print("Unique pitch values:", np.unique(lut[:, 2]))
@@ -333,7 +372,7 @@ def build_rocketsim_env():
     # if not debug_turtled_start:
     #     state_setter = RandomState(True, True, False)
     # else:
-    #     from mysim.state_setters.turtled_start import TurtledStart
+    #     from rlgymbotv2.mysim.state_setters.turtled_start import TurtledStart
     #     state_setter = TurtledStart(
     #         z=20.0,           # a bit above ground so physics settles cleanly
     #         yaw_random=True,  # learn recovery from multiple orientations
@@ -345,7 +384,7 @@ def build_rocketsim_env():
     # 10-12-25 Basic starting reward function. Get the bot to touch the ball. Phase 1.
     reward_fn = build_reward_function(phase=PHASE)
 
-    from mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
+    from rlgymbotv2.mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
     obs_builder = AdvancedObsPlus( #added 10/12/25
         max_allies=2,             # adjust to your team sizes
         max_opponents=3,          # adjust to your scrim sizes
@@ -536,11 +575,11 @@ def run_training():
                       # === PPO Core ===
                       policy_layer_sizes=POLICY_LAYERS,  # policy network
                       critic_layer_sizes=CRITIC_LAYERS,  # critic network
-                      ppo_batch_size=50_000,  # batch size - much higher than 300K doesn't seem to help most people. Keep this equal to ts_per_iteration. 
+                      ppo_batch_size=SAVE_EVERY,  # batch size - much higher than 300K doesn't seem to help most people. Keep this equal to ts_per_iteration. 
                       # 50k is good for early learning. 100k after bot can hit the ball. Once bot is shooting & scoring, set to 200k or 300k.
-                      ts_per_iteration=50_000,  # timesteps per training iteration - set this equal to the batch size
-                      exp_buffer_size=150_000,  # size of experience buffer - keep this 2 - 3x the batch size
-                      ppo_minibatch_size=12_500,  # minibatch size - set this as high as your GPU can handle
+                      ts_per_iteration=SAVE_EVERY,  # timesteps per training iteration - set this equal to the batch size
+                      exp_buffer_size=SAVE_EVERY * 2,  # size of experience buffer - keep this 2 - 3x the batch size
+                      ppo_minibatch_size=int(SAVE_EVERY / 4),  # minibatch size - set this as high as your GPU can handle
                       ppo_ent_coef=0.01,  # entropy coefficient - this determines the impact of exploration
                       ppo_epochs=3,   # number of PPO epochs. This is how many times the learning phase is repeated on the same batch of data. I recommend 2 or 3.
 
@@ -567,7 +606,8 @@ def run_training():
     import shutil
     # === Milestone Checkpoint Configuration ===
 
-    MILESTONE_DIR = CHECKPOINT_ROOT / "milestones" / f"Phase{PHASE}-" / LOG_PHASE
+    phase_name = f"Phase{PHASE}-{LOG_PHASE}".replace(" ", "")
+    MILESTONE_DIR = CHECKPOINT_ROOT / "milestones" / phase_name
     if global_debug_mode or debug_checkpoints:
         print("Milestone directory:", MILESTONE_DIR)
     MILESTONE_DIR.mkdir(parents=True, exist_ok=True)
@@ -600,7 +640,6 @@ def run_training():
             # === Collect metrics for meta logging ===
             avg_reward = getattr(learner.agent, "average_reward", None)
 
-            # Fix — if avg_reward is a list, tensor, or cumulative total:
             if isinstance(avg_reward, (list, np.ndarray)) and len(avg_reward) > 0:
                 avg_reward = float(np.mean(avg_reward))
             elif isinstance(avg_reward, (int, float)):
@@ -612,7 +651,6 @@ def run_training():
             avg_entropy = getattr(ppo, "last_policy_entropy", None)
             avg_kl = getattr(ppo, "last_kl_divergence", None)
 
-            # === Write enhanced meta info for this milestone ===
             meta_extra = {
                 "phase": phase_name,
                 "total_timesteps": int(total_steps),
@@ -629,16 +667,36 @@ def run_training():
                 critic_layers=critic_layers,
                 **meta_extra
             )
-            ##################################################### WIP#################
-            # === Optional: auto-promote to Releases === IN PROGRESS
-            # if avg_reward and avg_reward > 0.9:  # threshold can be tuned per phase
-            #     from mysim.training_utils.milestone_utils import promote_to_release
-            #     promote_to_release(milestone_dir)
-            ##################################################### WIP#################
+
+            # === Self-play evaluation hook ===
+            if SELFPLAY_ENABLED:
+                try:
+                    opponent_pool.refresh()
+                    opponent_ckpt = opponent_pool.best_so_far()
+                    if opponent_ckpt is not None and opponent_ckpt != milestone_dir:
+                        print(f"[selfplay] Evaluating {milestone_dir.name} vs {opponent_ckpt.name}")
+                        # Once run_selfplay_eval is wired:
+                        # wins, losses = run_selfplay_eval(
+                        #     current_ckpt=milestone_dir,
+                        #     opponent_ckpt=opponent_ckpt,
+                        #     n_games=5,
+                        #     device=device,
+                        # )
+                        # print(f"[selfplay] current={wins}  opponent={losses}")
+
+                        # if wins > losses:
+                        #     print("[selfplay] New best policy promoted.")
+                        #     ...
+                    else:
+                        print("[selfplay] No previous opponent available yet.")
+                except Exception as e:
+                    print(f"[selfplay] Evaluation failed: {e}")
+
 
             # === Schedule next milestone ===
             learner._next_milestone += MILESTONE_INTERVAL
 
+    opponent_pool = SelfPlayOpponentPool(CHECKPOINT_ROOT, min_steps=5_000_000)
 
     # Monkey-patch the learner’s save() method
     learner.save = wrapped_save
@@ -646,8 +704,12 @@ def run_training():
     # === Start training ===
     start_time = time.time()
     learner.learn()
-    assert env_for_shape.action_space.__class__.__name__ == "MultiDiscrete", \
-    f"Expected MultiDiscrete action space, got {env_for_shape.action_space}"
+    if global_debug_mode or debug_actions or debug_learning:
+        print(
+            "[train] Finished learner.learn(). "
+            f"Action space at build time was: {env_for_shape.action_space} "
+            f"({env_for_shape.action_space.__class__.__name__})"
+        )
     elapsed = (time.time() - start_time) / 3600
     print(f"[training] Completed after {elapsed:.2f} hours.")
 

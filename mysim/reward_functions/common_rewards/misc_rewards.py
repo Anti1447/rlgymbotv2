@@ -1,10 +1,10 @@
 import numpy as np
 
-from mysim import math
-from mysim.common_values import BLUE_TEAM, BLUE_GOAL_BACK, ORANGE_GOAL_BACK, ORANGE_TEAM, BALL_MAX_SPEED, \
+from rlgymbotv2.mysim import math
+from rlgymbotv2.mysim.common_values import BLUE_TEAM, BLUE_GOAL_BACK, ORANGE_GOAL_BACK, ORANGE_TEAM, BALL_MAX_SPEED, \
     CAR_MAX_SPEED, CEILING_Z
-from mysim.gamestates import GameState, PlayerData
-from mysim.reward_functions import RewardFunction
+from rlgymbotv2.mysim.gamestates import GameState, PlayerData
+from rlgymbotv2.mysim.reward_functions import RewardFunction
 
 
 

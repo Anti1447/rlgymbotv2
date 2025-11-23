@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 import rlgym_sim
 
-from mysim.state_setters.random_state import RandomState
-from mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
-from mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
+from rlgymbotv2.mysim.state_setters.random_state import RandomState
+from rlgymbotv2.mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
+from rlgymbotv2.mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
 
 def _is_turtled(car, thresh=-0.2):
     return bool(getattr(car, "on_ground", False)) and float(car.up()[2]) < thresh

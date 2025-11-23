@@ -2,8 +2,8 @@
 Data classes to permit the manipulation of environment variables.
 """
 
-from mysim.gamestates.game_state import GameState
-from mysim.state_setters.wrappers import PhysicsWrapper, CarWrapper
+from rlgymbotv2.mysim.gamestates.game_state import GameState
+from rlgymbotv2.mysim.state_setters.wrappers import PhysicsWrapper, CarWrapper
 from rlgym_sim.utils.common_values import BLUE_TEAM, ORANGE_TEAM
 from typing import List
 

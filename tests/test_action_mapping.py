@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
+from rlgymbotv2.mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
 
 def test_action_mapping_basic_shape_and_linking():
     tbl = SimpleHybridDiscreteAction().lookup_table

@@ -2,9 +2,9 @@ from abc import abstractmethod
 
 import numpy as np
 
-from mysim import RewardFunction
-from mysim.common_values import BLUE_TEAM, ORANGE_TEAM, BACK_NET_Y, BACK_WALL_Y
-from mysim.gamestates import PlayerData, GameState
+from rlgymbotv2.mysim import RewardFunction
+from rlgymbotv2.mysim.common_values import BLUE_TEAM, ORANGE_TEAM, BACK_NET_Y, BACK_WALL_Y
+from rlgymbotv2.mysim.gamestates import PlayerData, GameState
 
 
 class ConditionalRewardFunction(RewardFunction):

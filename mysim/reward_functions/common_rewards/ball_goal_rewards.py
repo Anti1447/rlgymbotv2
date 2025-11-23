@@ -1,10 +1,73 @@
 import numpy as np
 
-from mysim import RewardFunction, math
-from mysim.common_values import BLUE_TEAM, ORANGE_TEAM, ORANGE_GOAL_BACK, \
+from rlgymbotv2.mysim import RewardFunction, math
+from rlgymbotv2.mysim.common_values import BLUE_TEAM, ORANGE_TEAM, ORANGE_GOAL_BACK, \
     BLUE_GOAL_BACK, BALL_MAX_SPEED, BACK_WALL_Y, BALL_RADIUS, BACK_NET_Y
-from mysim.gamestates import GameState, PlayerData
+from rlgymbotv2.mysim.gamestates import GameState, PlayerData
 
+class BallYCoordinateReward(RewardFunction):
+    def __init__(self, exponent=1):
+        # Exponent should be odd so that negative y -> negative reward
+        self.exponent = exponent
+
+    def reset(self, initial_state: GameState):
+        pass
+
+    def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
+        if player.team_num == BLUE_TEAM:
+            return (state.ball.position[1] / (BACK_WALL_Y + BALL_RADIUS)) ** self.exponent
+        else:
+            return (state.inverted_ball.position[1] / (BACK_WALL_Y + BALL_RADIUS)) ** self.exponent
+        
+class BasicShotReward(RewardFunction):
+    def __init__(self, max_reward=1.0):
+        super().__init__()
+        self.max_reward = max_reward
+
+    def reset(self, initial_state: GameState):
+        pass
+
+    def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
+        if player.team_num == BLUE_TEAM:
+            objective = np.array(ORANGE_GOAL_BACK)
+        else:
+            objective = np.array(BLUE_GOAL_BACK)
+
+        vel = state.ball.linear_velocity
+        pos_diff = objective - state.ball.position
+
+        # Calculate the velocity of the ball towards the opponent's goal
+        norm_pos_diff = pos_diff / np.linalg.norm(pos_diff)
+        norm_vel = vel / BALL_MAX_SPEED
+        velocity_towards_goal = float(np.dot(norm_pos_diff, norm_vel))
+
+        # Calculate the reward based on the velocity towards the goal and the position of the ball
+        reward = velocity_towards_goal * self.max_reward
+        return reward
+    
+class ClearReward(RewardFunction):
+    def __init__(self, scale=1.0):
+        super().__init__()
+        self.scale = scale
+
+    def reset(self, initial_state: GameState):
+        pass
+
+    def get_reward(self, player, state, previous_action):
+        if player.team_num == BLUE_TEAM:
+            own_goal = np.array(BLUE_GOAL_BACK)
+        else:
+            own_goal = np.array(ORANGE_GOAL_BACK)
+
+        vel = state.ball.linear_velocity
+        pos_diff = state.ball.position - own_goal
+
+        norm_pos = pos_diff / np.linalg.norm(pos_diff)
+        norm_vel = vel / BALL_MAX_SPEED
+
+        # >0 means ball is moving AWAY from own goal
+        away_speed = float(np.dot(norm_vel, norm_pos))
+        return max(0.0, away_speed) * self.scale
 
 class LiuDistanceBallToGoalReward(RewardFunction):
     def __init__(self, own_goal=False):
@@ -24,37 +87,38 @@ class LiuDistanceBallToGoalReward(RewardFunction):
         # Compensate for moving objective to back of net
         dist = np.linalg.norm(state.ball.position - objective) - (BACK_NET_Y - BACK_WALL_Y + BALL_RADIUS)
         return np.exp(-0.5 * dist / BALL_MAX_SPEED)  # Inspired by https://arxiv.org/abs/2105.12196
-
-
-class VelocityBallToGoalReward(RewardFunction):
-    def __init__(self, own_goal=False, use_scalar_projection=False):
+        
+class NegativeVelocityTowardOwnGoalReward(RewardFunction):
+    """
+    Penalizes ball velocity toward the player's own goal.
+    Encourages clearing, shadowing, and challenge timing.
+    """
+    def __init__(self, scale=1.0):
         super().__init__()
-        self.own_goal = own_goal
-        self.use_scalar_projection = use_scalar_projection
+        self.scale = scale
 
     def reset(self, initial_state: GameState):
         pass
 
-    def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
-        if player.team_num == BLUE_TEAM and not self.own_goal \
-                or player.team_num == ORANGE_TEAM and self.own_goal:
-            objective = np.array(ORANGE_GOAL_BACK)
+    def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray):
+        # Identify own goal center
+        if player.team_num == BLUE_TEAM:
+            own_goal = np.array(BLUE_GOAL_BACK)
         else:
-            objective = np.array(BLUE_GOAL_BACK)
+            own_goal = np.array(ORANGE_GOAL_BACK)
 
         vel = state.ball.linear_velocity
-        pos_diff = objective - state.ball.position
-        if self.use_scalar_projection:
-            # Vector version of v=d/t <=> t=d/v <=> 1/t=v/d
-            # Max value should be max_speed / ball_radius = 2300 / 94 = 24.5
-            # Used to guide the agent towards the ball
-            inv_t = math.scalar_projection(vel, pos_diff)
-            return inv_t
-        else:
-            # Regular component velocity
-            norm_pos_diff = pos_diff / np.linalg.norm(pos_diff)
-            norm_vel = vel / BALL_MAX_SPEED
-            return float(np.dot(norm_pos_diff, norm_vel))
+        pos_diff = own_goal - state.ball.position
+
+        norm_pos_diff = pos_diff / np.linalg.norm(pos_diff)
+        norm_vel = vel / BALL_MAX_SPEED
+
+        # Positive when ball moves *toward own goal*
+        toward_own_goal = float(np.dot(norm_pos_diff, norm_vel))
+
+        # Only punish the bad part (don’t reward clearing here)
+        return -max(0.0, toward_own_goal) * self.scale
+
         
 class SaveReward(RewardFunction):
     def __init__(self, save_radius=1000, max_reward=1.0):
@@ -115,42 +179,62 @@ class SaveReward(RewardFunction):
         self.last_ball_velocity = ball_velocity
         return 0.0
 
-class BallYCoordinateReward(RewardFunction):
-    def __init__(self, exponent=1):
-        # Exponent should be odd so that negative y -> negative reward
-        self.exponent = exponent
-
-    def reset(self, initial_state: GameState):
-        pass
-
-    def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
-        if player.team_num == BLUE_TEAM:
-            return (state.ball.position[1] / (BACK_WALL_Y + BALL_RADIUS)) ** self.exponent
-        else:
-            return (state.inverted_ball.position[1] / (BACK_WALL_Y + BALL_RADIUS)) ** self.exponent
-
-class BasicShotReward(RewardFunction):
-    def __init__(self, max_reward=1.0):
+class ShotSetupReward(RewardFunction):
+    def __init__(self, scale=1.0):
         super().__init__()
-        self.max_reward = max_reward
+        self.scale = scale
+
+    def reset(self, initial_state): pass
+
+    def get_reward(self, player, state, previous_action):
+        if player.team_num == BLUE_TEAM:
+            target_goal = np.array(ORANGE_GOAL_BACK)
+        else:
+            target_goal = np.array(BLUE_GOAL_BACK)
+
+        car_pos = player.car_data.position
+        ball_pos = state.ball.position
+
+        # Behind ball?
+        ball_forward_vec = ball_pos - target_goal
+        car_forward_vec = car_pos - ball_pos
+
+        behind_factor = np.dot(
+            ball_forward_vec / np.linalg.norm(ball_forward_vec),
+            car_forward_vec / np.linalg.norm(car_forward_vec)
+        )
+
+        if behind_factor > 0.6:
+            return behind_factor * self.scale
+
+        return 0.0
+    
+class VelocityBallToGoalReward(RewardFunction):
+    def __init__(self, own_goal=False, use_scalar_projection=False):
+        super().__init__()
+        self.own_goal = own_goal
+        self.use_scalar_projection = use_scalar_projection
 
     def reset(self, initial_state: GameState):
         pass
 
     def get_reward(self, player: PlayerData, state: GameState, previous_action: np.ndarray) -> float:
-        if player.team_num == BLUE_TEAM:
+        if player.team_num == BLUE_TEAM and not self.own_goal \
+                or player.team_num == ORANGE_TEAM and self.own_goal:
             objective = np.array(ORANGE_GOAL_BACK)
         else:
             objective = np.array(BLUE_GOAL_BACK)
 
         vel = state.ball.linear_velocity
         pos_diff = objective - state.ball.position
-
-        # Calculate the velocity of the ball towards the opponent's goal
-        norm_pos_diff = pos_diff / np.linalg.norm(pos_diff)
-        norm_vel = vel / BALL_MAX_SPEED
-        velocity_towards_goal = float(np.dot(norm_pos_diff, norm_vel))
-
-        # Calculate the reward based on the velocity towards the goal and the position of the ball
-        reward = velocity_towards_goal * self.max_reward
-        return reward
+        if self.use_scalar_projection:
+            # Vector version of v=d/t <=> t=d/v <=> 1/t=v/d
+            # Max value should be max_speed / ball_radius = 2300 / 94 = 24.5
+            # Used to guide the agent towards the ball
+            inv_t = math.scalar_projection(vel, pos_diff)
+            return inv_t
+        else:
+            # Regular component velocity
+            norm_pos_diff = pos_diff / np.linalg.norm(pos_diff)
+            norm_vel = vel / BALL_MAX_SPEED
+            return float(np.dot(norm_pos_diff, norm_vel))

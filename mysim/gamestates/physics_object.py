@@ -2,7 +2,7 @@
 A class to represent the state of a physics object from the game.
 """
 
-from mysim import math
+from rlgymbotv2.mysim import math
 import numpy as np
 from typing import Optional
 

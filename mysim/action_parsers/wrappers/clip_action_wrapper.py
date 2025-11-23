@@ -1,6 +1,6 @@
 # Usage:
-# from mysim.action_parsers.continuous_act import ContinuousAction
-# from mysim.action_parsers.wrappers.clip_action_wrapper import ClipActionWrapper
+# from rlgymbotv2.mysim.action_parsers.continuous_act import ContinuousAction
+# from rlgymbotv2.mysim.action_parsers.wrappers.clip_action_wrapper import ClipActionWrapper
 # 
 # action_parser = ClipActionWrapper(ContinuousAction())
 

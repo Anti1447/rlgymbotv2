@@ -3,7 +3,7 @@ A terminal condition.
 """
 
 from abc import ABC, abstractmethod
-from mysim.gamestates import GameState
+from rlgymbotv2.mysim.gamestates import GameState
 
 
 class TerminalCondition(ABC):

@@ -1,7 +1,7 @@
 import numpy as np
 import gym.spaces
-from mysim.gamestates import GameState
-from mysim.action_parsers import ActionParser
+from rlgymbotv2.mysim.gamestates import GameState
+from rlgymbotv2.mysim.action_parsers import ActionParser
 from typing import Optional, Dict, Any
 
 class DiscreteAction(ActionParser):

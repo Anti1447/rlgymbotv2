@@ -1,9 +1,9 @@
 import math
 import numpy as np
 from typing import Any, List
-from mysim import common_values
-from mysim.gamestates import PlayerData, GameState
-from mysim.obs_builders import ObsBuilder
+from rlgymbotv2.mysim import common_values
+from rlgymbotv2.mysim.gamestates import PlayerData, GameState
+from rlgymbotv2.mysim.obs_builders import ObsBuilder
 
 
 class DefaultObs(ObsBuilder):

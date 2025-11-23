@@ -1,6 +1,6 @@
 import numpy as np
-from mysim import RewardFunction
-from mysim.gamestates import GameState, PlayerData
+from rlgymbotv2.mysim import RewardFunction
+from rlgymbotv2.mysim.gamestates import GameState, PlayerData
 
 '''
 This is a wrapper to put around an existing reward

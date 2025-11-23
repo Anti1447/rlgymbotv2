@@ -2,12 +2,12 @@ from typing import Any, Dict
 import numpy as np
 # old (deprecated and now missing)
 # from rlgym.rocket_league.action_parsers import LookupTableAction
-from mysim.action_parsers.lookup_table_action import LookupTableAction # use local version
+from rlgymbotv2.mysim.action_parsers.lookup_table_action import LookupTableAction # use local version
 import gym.spaces
-from mysim.gamestates import PlayerData, GameState
+from rlgymbotv2.mysim.gamestates import PlayerData, GameState
 from rlgym.api import ActionParser, AgentID
-from mysim.debug_config import global_debug_mode, debug_actions
-from mysim.action_parsers.utils import get_lookup_table_size, debug_print_lut_size, find_lookup_table
+from rlgymbotv2.mysim.debug_config import global_debug_mode, debug_actions
+from rlgymbotv2.mysim.action_parsers.utils import get_lookup_table_size, debug_print_lut_size, find_lookup_table
 
 
 @property

@@ -16,8 +16,8 @@
 from collections import deque
 from typing import List, Tuple
 import numpy as np
-from mysim.obs_builders import ObsBuilder  # noqa
-from mysim.gamestates import GameState, PlayerData, PhysicsObject  # noqa
+from rlgymbotv2.mysim.obs_builders import ObsBuilder  # noqa
+from rlgymbotv2.mysim.gamestates import GameState, PlayerData, PhysicsObject  # noqa
 from typing import Optional
 
 

@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 import rlgym_sim
 
-from mysim.state_setters.turtled_start import TurtledStart
-from mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
-from mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
+from rlgymbotv2.mysim.state_setters.turtled_start import TurtledStart
+from rlgymbotv2.mysim.action_parsers.simple_discrete_hybrid_action import SimpleHybridDiscreteAction
+from rlgymbotv2.mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
 
 # [thr, steer, pitch, yaw, roll, jump, boost, handbrake]
 

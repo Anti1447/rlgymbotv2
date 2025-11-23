@@ -1,6 +1,6 @@
-from mysim.state_setters.wrappers import PhysicsWrapper
-from mysim.gamestates import PlayerData
-from mysim.common_values import BLUE_TEAM, ORANGE_TEAM
+from rlgymbotv2.mysim.state_setters.wrappers import PhysicsWrapper
+from rlgymbotv2.mysim.gamestates import PlayerData
+from rlgymbotv2.mysim.common_values import BLUE_TEAM, ORANGE_TEAM
 import numpy as np
 
 

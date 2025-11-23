@@ -1,6 +1,6 @@
-from mysim.reward_functions import RewardFunction
-from mysim import math
-from mysim.gamestates import GameState, PlayerData
+from rlgymbotv2.mysim.reward_functions import RewardFunction
+from rlgymbotv2.mysim import math
+from rlgymbotv2.mysim.gamestates import GameState, PlayerData
 import numpy as np
 
 

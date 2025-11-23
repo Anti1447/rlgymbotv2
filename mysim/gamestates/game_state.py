@@ -4,7 +4,7 @@
 
 import numpy as np
 from typing import List, Optional
-from mysim.gamestates import PlayerData, PhysicsObject
+from rlgymbotv2.mysim.gamestates import PlayerData, PhysicsObject
 
 
 class GameState(object):

@@ -1,5 +1,5 @@
-from mysim.state_setters import StateSetter
-from mysim.state_setters import StateWrapper
+from rlgymbotv2.mysim.state_setters import StateSetter
+from rlgymbotv2.mysim.state_setters import StateWrapper
 import random
 import numpy as np
 

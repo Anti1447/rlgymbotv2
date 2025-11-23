@@ -3,7 +3,7 @@ The observation builder.
 """
 
 from abc import ABC, abstractmethod
-from mysim.gamestates import PlayerData, GameState
+from rlgymbotv2.mysim.gamestates import PlayerData, GameState
 import gym
 import numpy as np
 from typing import Any

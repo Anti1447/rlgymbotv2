@@ -14,7 +14,7 @@ RocketSim ultimately receives:
 from typing import Optional, Dict, Any
 import numpy as np
 from ._compat import safe_get_action_space
-from mysim.debug_config import global_debug_mode, debug_actions
+from rlgymbotv2.mysim.debug_config import global_debug_mode, debug_actions
 
 
 class FinalRocketSimAdapter:

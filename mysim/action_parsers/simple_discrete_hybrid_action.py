@@ -1,7 +1,7 @@
 import numpy as np
 import gym.spaces
-from mysim.action_parsers import ActionParser
-from mysim.debug_config import debug_actions, global_debug_mode
+from rlgymbotv2.mysim.action_parsers import ActionParser
+from rlgymbotv2.mysim.debug_config import debug_actions, global_debug_mode
 
 
 class SimpleHybridDiscreteAction(ActionParser):

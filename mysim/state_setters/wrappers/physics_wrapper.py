@@ -1,4 +1,4 @@
-from mysim.gamestates import PhysicsObject
+from rlgymbotv2.mysim.gamestates import PhysicsObject
 import numpy as np
 
 
