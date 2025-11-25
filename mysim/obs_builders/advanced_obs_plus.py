@@ -19,6 +19,8 @@ import numpy as np
 from rlgymbotv2.mysim.obs_builders import ObsBuilder  # noqa
 from rlgymbotv2.mysim.gamestates import GameState, PlayerData, PhysicsObject  # noqa
 from typing import Optional
+from rlgymbotv2.mysim.common_values import BOOST_LOCATIONS
+
 
 
 def _norm_clip(x, lo=-1.0, hi=1.0):
@@ -48,9 +50,9 @@ class AdvancedObsPlus(ObsBuilder):
         self,
         max_allies: int = 2,
         max_opponents: int = 3,
-        k_nearest_pads_me: int = 4,
-        k_nearest_pads_ball: int = 2,
-        stack_size: int = 1,           # set to 3 or 4 to enable tiny temporal stacking
+        k_nearest_pads_me: int = 5,
+        k_nearest_pads_ball: int = 3,
+        stack_size: int = 3,           # set to 3 or 4 to enable tiny temporal stacking
         include_prev_action: bool = True,
         action_lookup: Optional[np.ndarray] = None,  # for LUT index -> 8-dim action conversion
     ):
@@ -121,20 +123,28 @@ class AdvancedObsPlus(ObsBuilder):
             players_world, key=lambda pc: np.linalg.norm(pc[1].position - ball_pos)
         )
 
-        # Boost pads: collect (pos, is_big, is_active, respawn_time if available)
+        # --- Boost pads: RocketSim-style (state.boost_pads is an array of 0/1 flags) ---
         pads_meta = []
-        if hasattr(state, "boost_pads") and state.boost_pads is not None:
-            for bp in state.boost_pads:
-                # Expecting fields: position, is_active, is_full_boost (names vary a bit across forks)
-                pos = getattr(bp, "position", None)
-                if pos is None:
-                    continue
-                pos = np.asarray(pos, dtype=np.float32)
-                is_big = bool(
-                    getattr(bp, "is_full_boost", getattr(bp, "is_big", False))
-                )
-                active = bool(getattr(bp, "is_active", True))
-                timer = float(getattr(bp, "timer", 0.0))
+        pads_flags = getattr(state, "boost_pads", None)
+
+        if pads_flags is not None:
+            pads_flags = np.asarray(pads_flags, dtype=np.float32).ravel()
+
+            # BOOST_LOCATIONS is a list/array of 34 (x, y, z) pad positions on standard map
+            n = min(len(BOOST_LOCATIONS), pads_flags.shape[0])
+
+            for i in range(n):
+                pos = np.asarray(BOOST_LOCATIONS[i], dtype=np.float32)
+
+                # infer "big" based on height (RL convention: big pads are the tall ones)
+                is_big = bool(pos[2] > 72.0)
+
+                # RocketSim exposes active flag as 0.0 / 1.0
+                active = bool(pads_flags[i] > 0.5)
+
+                # we don't get a cooldown timer from GameState, so just stub 0.0
+                timer = 0.0
+
                 pads_meta.append((pos, is_big, active, timer))
 
         self._cached = {
@@ -165,9 +175,11 @@ class AdvancedObsPlus(ObsBuilder):
         allies = self.max_allies * other_per
         opps = self.max_opponents * other_per
         pads = (self.k_nearest_pads_me * 6) + (self.k_nearest_pads_ball * 6)  # each: [rel(3), is_big, active, timer] = 6
-        goals = 3 + 3                            # ball->their_goal, ball->my_goal
+        # goals: ball->their, ball->my, car->their, car->my (all in car frame)
+        goals = 3 * 4
         base = ball_rel + me + ctx + act + allies + opps + pads + goals
         return base * self.stack_size
+
 
     def get_obs_space(self):
         try:
@@ -330,13 +342,33 @@ class AdvancedObsPlus(ObsBuilder):
             pad_feat = [pm, pb]
         pad_feat = np.concatenate(pad_feat, dtype=np.float32) if pad_feat else np.zeros(self.k_nearest_pads_me*6 + self.k_nearest_pads_ball*6, dtype=np.float32)
 
-        # --- Goal geometry (ball->their goal, ball->my goal) in my car frame ---
-        my_goal_world    = np.array([0.0, -5120.0, 0.0]) if player.team_num == 0 else np.array([0.0, 5120.0, 0.0])
+        # --- Goal geometry (ball & car → goals) in my car frame ---
+        # RL standard map: back walls at y = ±5120. We treat the goal as a
+        # center point on that wall; width/height are captured implicitly via
+        # ball/car X,Z already present in other features.
+        my_goal_world    = np.array([0.0, -5120.0, 0.0]) if player.team_num == 0 else np.array([0.0,  5120.0, 0.0])
         their_goal_world = -my_goal_world
+
+        ball_pos_world = c["ball_pos"]
+        car_pos_world  = my_car.position.astype(np.float32)
+
+        # Ball → goals (in my car frame)
+        ball_to_their = to_car(their_goal_world - ball_pos_world) / self.POS_MAX
+        ball_to_my    = to_car(my_goal_world   - ball_pos_world) / self.POS_MAX
+
+        # Car → goals (in my car frame)
+        car_to_their  = to_car(their_goal_world - car_pos_world) / self.POS_MAX
+        car_to_my     = to_car(my_goal_world   - car_pos_world) / self.POS_MAX
+
         g_vecs = np.concatenate([
-            to_car(their_goal_world - c["ball_pos"]) / self.POS_MAX,
-            to_car(my_goal_world    - c["ball_pos"]) / self.POS_MAX,
+            ball_to_their, ball_to_my,
+            car_to_their,  car_to_my,
         ], dtype=np.float32)
+
+
+        # Enforce team invariance: map both teams into the canonical "blue frame"
+        g_vecs = g_raw * sign
+
 
         # --- Assemble one-step vector ---
         step_vec = np.concatenate([
