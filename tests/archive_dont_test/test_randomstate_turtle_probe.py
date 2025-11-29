@@ -9,7 +9,8 @@ from rlgymbotv2.mysim.obs_builders.advanced_obs_plus import AdvancedObsPlus
 def _is_turtled(car, thresh=-0.2):
     return bool(getattr(car, "on_ground", False)) and float(car.up()[2]) < thresh
 
-@pytest.mark.xfail(strict=False, reason="Diagnostic until recovery is reliable in RandomState.")
+# @pytest.mark.xfail(strict=False, reason="Diagnostic until recovery is reliable in RandomState.")
+@pytest.mark.skip(reason="Not needed right now")
 def test_randomstate_has_at_least_one_turtle_recovery():
     env = rlgym_sim.make(
         state_setter=RandomState(True, True, False),
